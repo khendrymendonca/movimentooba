@@ -16,15 +16,75 @@ export default function NovaSenha() {
   const supabase = createClient();
 
   useEffect(() => {
-    // Verificar se o usuário realmente tem uma sessão ativa (chegou pelo link)
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError("Link de recuperação inválido ou expirado. Por favor, solicite um novo.");
+    let mounted = true;
+
+    // 1. Escutar alterações de autenticação (disparado pelo Supabase quando lê hash ou token)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (event === 'PASSWORD_RECOVERY' || session) {
+        setError(null);
+        setCheckingSession(false);
       }
-      setCheckingSession(false);
+    });
+
+    // 2. Tratar parâmetros da URL (código PKCE ou erro)
+    const initAuth = async () => {
+      if (typeof window === 'undefined') return;
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      
+      const errorMsg = urlParams.get('error_description') || hashParams.get('error_description');
+      if (errorMsg) {
+        if (mounted) {
+          setError(decodeURIComponent(errorMsg.replace(/\+/g, ' ')));
+          setCheckingSession(false);
+        }
+        return;
+      }
+
+      // Se veio código PKCE
+      const code = urlParams.get('code');
+      if (code) {
+        const { error: codeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (!codeError && mounted) {
+          setError(null);
+          setCheckingSession(false);
+          return;
+        }
+      }
+
+      // Verificar sessão atual
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && mounted) {
+        setError(null);
+        setCheckingSession(false);
+        return;
+      }
+
+      // Se tiver tokens no hash (#access_token=...), dar tempo para o Supabase processar
+      const hasTokenInHash = window.location.hash.includes('access_token');
+      if (!hasTokenInHash) {
+        // Aguarda 1 segundo antes de concluir que não há sessão
+        setTimeout(() => {
+          if (mounted) {
+            supabase.auth.getSession().then(({ data: { session: s } }) => {
+              if (!s && mounted) {
+                setError("Link de recuperação inválido ou expirado. Por favor, solicite um novo.");
+              }
+              setCheckingSession(false);
+            });
+          }
+        }, 800);
+      }
     };
-    checkSession();
+
+    initAuth();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [supabase.auth]);
 
   const handleUpdate = async (e: React.FormEvent) => {
