@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Instrument_Sans } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
-import { Header } from "@/components/Header";
 
-const inter = Inter({ subsets: ["latin"] });
+const instrumentSans = Instrument_Sans({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "O Bom Amigo - Painel Administrativo",
-  description: "Painel administrativo para o projeto O Bom Amigo",
+  title: "O Bom Amigo",
+  description: "Projeto social para gestão de doadores de sangue",
 };
 
 export default function RootLayout({
@@ -18,14 +16,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className={`${inter.className} flex min-h-screen bg-slate-50`}>
-        <Sidebar />
-        <div className="flex-1 flex flex-col h-screen">
-          <Header />
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
-        </div>
+      <body className={`${instrumentSans.className} min-h-screen bg-slate-50 text-slate-900 flex flex-col`}>
+        {children}
       </body>
     </html>
   );

@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local scripts / credentials
+create_user.js
+
+
 # vercel
 .vercel
 
