@@ -106,27 +106,51 @@ export default function DoacoesDoador() {
 
       <div className="px-6 mt-6 space-y-10">
 
-        {/* Cadastro Rápido Minimalista */}
+        {/* Botão Registrar Doação */}
         <div className="bg-red-50 p-5 rounded-3xl border border-red-100 relative overflow-hidden">
           <Heart className="absolute -right-4 -bottom-4 text-red-100/50 w-32 h-32" />
-          <h2 className="text-sm font-bold text-red-900 mb-4 flex items-center gap-2 relative z-10">
-            <PlusCircle size={18} className="text-red-600" /> Registrou uma doação hoje?
-          </h2>
-          <div className="flex gap-2 relative z-10">
-            <input 
-              type="date" 
-              value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              className="flex-1 px-4 py-3 rounded-2xl border border-red-200 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white text-slate-900 text-sm font-medium"
-            />
-            <button 
-              onClick={handleRegisterDonation}
-              disabled={registering}
-              className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold transition-colors shadow-md disabled:opacity-70"
-            >
-              Salvar
-            </button>
-          </div>
+          
+          {!newDate && !registering ? (
+            <div className="relative z-10 flex flex-col items-start gap-3">
+              <h2 className="text-sm font-bold text-red-900 flex items-center gap-2">
+                <PlusCircle size={18} className="text-red-600" /> Adicionar nova doação
+              </h2>
+              <p className="text-xs text-red-800/70 mb-1">Mantenha seu histórico atualizado para receber seus selos.</p>
+              <button 
+                onClick={() => setNewDate(new Date().toISOString().split('T')[0])}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-sm text-sm"
+              >
+                Registrar Doação
+              </button>
+            </div>
+          ) : (
+            <div className="relative z-10 flex flex-col items-start gap-3 w-full">
+              <h2 className="text-sm font-bold text-red-900 flex items-center gap-2">
+                <Calendar size={18} className="text-red-600" /> Data da Doação
+              </h2>
+              <div className="flex gap-2 w-full">
+                <input 
+                  type="date" 
+                  value={newDate}
+                  onChange={(e) => setNewDate(e.target.value)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-red-200 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white text-slate-900 text-sm font-medium"
+                />
+                <button 
+                  onClick={handleRegisterDonation}
+                  disabled={registering}
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-sm disabled:opacity-70"
+                >
+                  Salvar
+                </button>
+              </div>
+              <button 
+                onClick={() => setNewDate('')}
+                className="text-xs font-bold text-slate-400 hover:text-slate-600 mt-1 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Coleção de Selos (Gamificação Anual) */}
