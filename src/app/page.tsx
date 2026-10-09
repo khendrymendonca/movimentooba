@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { Heart, ShieldCheck, CreditCard, ChevronRight, Users, Activity, Sparkles, BookOpen, Info } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 
-export default function LandingPage() {
+function RedirectHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -17,8 +17,15 @@ export default function LandingPage() {
     }
   }, [searchParams, router]);
 
+  return null;
+}
+
+export default function LandingPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      <Suspense fallback={null}>
+        <RedirectHandler />
+      </Suspense>
       {/* Navegação */}
       <nav className="fixed w-full bg-white/80 backdrop-blur-md z-50 border-b border-red-50/50">
         <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
