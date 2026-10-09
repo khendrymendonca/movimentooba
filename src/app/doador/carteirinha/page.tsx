@@ -100,20 +100,20 @@ export default function CarteirinhaDoador() {
             </div>
             
             {/* Meio do Cartão */}
-            <div className="flex justify-between items-end relative z-10">
-              <div className="flex gap-4 items-end">
+            <div className="flex justify-between items-end relative z-10 gap-2">
+              <div className="flex gap-3 items-end flex-1 min-w-0">
                 {userProfile.avatar_url ? (
-                  <div className="w-16 h-20 bg-white rounded-md overflow-hidden border-2 border-white/50 shadow-lg">
+                  <div className="w-16 h-20 bg-white rounded-md overflow-hidden border-2 border-white/50 shadow-lg shrink-0">
                     <Image src={userProfile.avatar_url} alt="Foto" width={64} height={80} className="object-cover w-full h-full" />
                   </div>
                 ) : (
-                  <div className="w-16 h-20 bg-white/10 rounded-md flex items-center justify-center border-2 border-white/30 backdrop-blur-sm shadow-inner">
+                  <div className="w-16 h-20 bg-white/10 rounded-md flex items-center justify-center border-2 border-white/30 backdrop-blur-sm shadow-inner shrink-0">
                     <span className="font-medium text-white/80 text-xl">{userProfile.name.charAt(0)}</span>
                   </div>
                 )}
-                <div className="flex flex-col pb-1">
+                <div className="flex flex-col pb-1 flex-1 min-w-0">
                   <span className="text-[8px] text-slate-200/80 uppercase tracking-widest mb-0.5">Nome</span>
-                  <span className="text-lg font-medium leading-tight tracking-tight line-clamp-2">{userProfile.name}</span>
+                  <span className="text-base sm:text-lg font-medium leading-tight tracking-tight break-words whitespace-normal line-clamp-2 w-full">{userProfile.name}</span>
                 </div>
               </div>
               <div className="flex flex-col items-end pb-1">
