@@ -3,9 +3,14 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Users, LayoutDashboard, User, Palette, Info, Newspaper } from 'lucide-react';
+import { Users, LayoutDashboard, User, Palette, Info, Newspaper, X } from 'lucide-react';
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   const getLinkClass = (path: string) => {
@@ -18,18 +23,33 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-white border-r border-red-100 flex flex-col min-h-screen relative overflow-hidden">
+    <aside 
+      className={`w-64 bg-white border-r border-red-100 flex flex-col h-full fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      } overflow-hidden`}
+    >
       {/* Detalhe de cor abstrato no fundo da sidebar */}
       <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-red-50 to-transparent -z-10"></div>
       
-      <div className="p-6 border-b border-red-50/50 flex flex-col items-center justify-center relative">
-        <Image 
-          src="/logo.png" 
-          alt="Logo O Bom Amigo" 
-          width={140} 
-          height={140} 
-          className="object-contain drop-shadow-sm hover:scale-105 transition-transform duration-300"
-        />
+      <div className="p-6 border-b border-red-50/50 flex items-center justify-between lg:justify-center relative">
+        <div className="flex justify-center w-full">
+          <Image 
+            src="/logo.png" 
+            alt="Logo O Bom Amigo" 
+            width={140} 
+            height={140} 
+            className="object-contain drop-shadow-sm hover:scale-105 transition-transform duration-300"
+          />
+        </div>
+        {/* Botão fechar apenas no mobile */}
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="lg:hidden absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
       
       <nav className="flex-1 py-6 px-3 z-10">

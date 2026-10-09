@@ -3,8 +3,20 @@
 import Link from 'next/link';
 import { Heart, ShieldCheck, CreditCard, ChevronRight, Users, Activity, Sparkles, BookOpen, Info } from 'lucide-react';
 import Image from 'next/image';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function LandingPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (code) {
+      router.push(`/nova-senha?code=${code}`);
+    }
+  }, [searchParams, router]);
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Navegação */}
