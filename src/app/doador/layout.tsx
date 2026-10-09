@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Heart, User, IdCard } from 'lucide-react';
+import { Home, Heart, User, IdCard, Award } from 'lucide-react';
 import Image from 'next/image';
 
 export default function DoadorLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,7 @@ export default function DoadorLayout({ children }: { children: React.ReactNode }
   const navItems = [
     { href: '/doador', icon: Home, label: 'Início' },
     { href: '/doador/doacoes', icon: Heart, label: 'Doações' },
+    { href: '/doador/colecao', icon: Award, label: 'Coleção' },
     { href: '/doador/carteirinha', icon: IdCard, label: 'Carteirinha' },
     { href: '/doador/perfil', icon: User, label: 'Perfil' },
   ];
@@ -53,7 +54,7 @@ export default function DoadorLayout({ children }: { children: React.ReactNode }
           const isActive = pathname === item.href;
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} className="flex flex-col items-center gap-1 group w-16">
+            <Link key={item.href} href={item.href} className="flex flex-col items-center gap-1 group flex-1">
               <div className={`p-2 rounded-xl transition-all duration-300 ${isActive ? 'text-red-600 scale-110' : 'text-slate-400 group-hover:text-red-400'}`}>
                 <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
               </div>
