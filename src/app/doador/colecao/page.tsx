@@ -111,11 +111,34 @@ export default function ColecaoDoador() {
           </div>
         )}
 
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3 items-start mt-6">
-          <Info size={20} className="text-blue-500 shrink-0 mt-0.5" />
-          <p className="text-xs text-blue-800 leading-relaxed font-medium">
-            Os selos são conquistados de acordo com a quantidade de doações realizadas em um único ano. O limite anual de doações varia de acordo com o sexo biológico, definindo a categoria máxima alcançável.
-          </p>
+        {/* Guia de Selos */}
+        <div className="mt-10">
+          <h3 className="text-sm font-bold text-slate-800 mb-4 px-1">Selos que você pode conquistar</h3>
+          <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm">
+            <div className="flex flex-wrap gap-4 justify-center">
+              {(userProfile.sex === 'M' 
+                ? [
+                    { name: 'Bronze', req: 1, bg: 'from-amber-700 to-amber-900', text: 'text-amber-100', ring: 'border-amber-800/20' },
+                    { name: 'Prata', req: 2, bg: 'from-slate-300 to-slate-500', text: 'text-white', ring: 'border-slate-400/20' },
+                    { name: 'Ouro', req: 3, bg: 'from-yellow-400 to-amber-500', text: 'text-white', ring: 'border-yellow-500/20' },
+                    { name: 'Platina', req: 4, bg: 'from-cyan-100 to-cyan-300', text: 'text-cyan-900', ring: 'border-cyan-200/50' }
+                  ]
+                : [
+                    { name: 'Rubi', req: 1, bg: 'from-red-500 to-red-700', text: 'text-white', ring: 'border-red-600/20' },
+                    { name: 'Pérola', req: 2, bg: 'from-stone-100 to-stone-200', text: 'text-stone-700', ring: 'border-stone-200/50' },
+                    { name: 'Diamante', req: 3, bg: 'from-blue-200 to-blue-400', text: 'text-blue-900', ring: 'border-blue-300/50' }
+                  ]
+              ).map(badge => (
+                <div key={badge.name} className="flex flex-col items-center w-[80px]">
+                  <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${badge.bg} ${badge.text} shadow-sm border-[3px] border-white ring-1 ${badge.ring} flex items-center justify-center mb-2`}>
+                    <Award size={20} className="opacity-90" />
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700 text-center">{badge.name}</span>
+                  <span className="text-[9px] text-slate-500 text-center">{badge.req} {badge.req === 1 ? 'doação' : 'doações'}/ano</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
       </div>
