@@ -115,7 +115,6 @@ export default function DoacoesDoador() {
               <h2 className="text-sm font-bold text-red-900 flex items-center gap-2">
                 <PlusCircle size={18} className="text-red-600" /> Adicionar nova doação
               </h2>
-              <p className="text-xs text-red-800/70 mb-1">Mantenha seu histórico atualizado para receber seus selos.</p>
               <button 
                 onClick={() => setNewDate(new Date().toISOString().split('T')[0])}
                 className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-sm text-sm"
@@ -152,43 +151,6 @@ export default function DoacoesDoador() {
             </div>
           )}
         </div>
-
-        {/* Coleção de Selos (Gamificação Anual) */}
-        {availableYears.length > 0 && (
-          <div>
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 ml-2">Sua Coleção de Selos</h2>
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
-              {availableYears.map(year => {
-                const count = donationsByYear[year].length;
-                const badge: BadgeType = calculateBadge(userProfile.sex || 'Outro', count);
-                const theme = getBadgeColors(badge);
-
-                if (badge === 'Nenhum') return null;
-
-                // Definindo cores do círculo holográfico baseadas no theme
-                let bgGradient = 'from-slate-100 to-slate-300';
-                let textColor = 'text-slate-800';
-                if (badge === 'Bronze') bgGradient = 'from-amber-700 to-amber-900', textColor = 'text-amber-100';
-                if (badge === 'Prata') bgGradient = 'from-slate-300 to-slate-500', textColor = 'text-white';
-                if (badge === 'Ouro') bgGradient = 'from-yellow-400 to-amber-500', textColor = 'text-white';
-                if (badge === 'Platina') bgGradient = 'from-cyan-100 to-cyan-300', textColor = 'text-cyan-900';
-                if (badge === 'Rubi') bgGradient = 'from-red-500 to-red-700', textColor = 'text-white';
-                if (badge === 'Pérola') bgGradient = 'from-stone-100 to-stone-200', textColor = 'text-stone-700';
-                if (badge === 'Diamante') bgGradient = 'from-blue-200 to-blue-400', textColor = 'text-blue-900';
-
-                return (
-                  <div key={year} className="min-w-[120px] bg-white border border-slate-100 p-4 rounded-3xl shadow-sm flex flex-col items-center justify-center flex-shrink-0">
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${bgGradient} ${textColor} shadow-lg border-[3px] border-white flex items-center justify-center flex-col leading-none mb-3`}>
-                      <Award size={20} className="mb-0.5 opacity-80" />
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mb-0.5">{year}</span>
-                    <span className="text-sm font-bold text-slate-800 tracking-tight">{badge}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Histórico com Filtros */}
         <div>
@@ -235,9 +197,6 @@ export default function DoacoesDoador() {
                     <p className="text-lg font-black text-slate-800 tracking-tight">
                       {new Date(donation.donation_date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }).replace(' de ', '/')}
                     </p>
-                  </div>
-                  <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
-                    <Heart size={24} />
                   </div>
                 </div>
               ))}

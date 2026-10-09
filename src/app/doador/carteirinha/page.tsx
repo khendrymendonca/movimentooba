@@ -113,7 +113,7 @@ export default function CarteirinhaDoador() {
                 )}
                 <div className="flex flex-col pb-1">
                   <span className="text-[8px] text-slate-200/80 uppercase tracking-widest mb-0.5">Nome</span>
-                  <span className="text-xl font-medium leading-none tracking-tight truncate max-w-[150px]">{userProfile.name}</span>
+                  <span className="text-lg font-medium leading-tight tracking-tight line-clamp-2">{userProfile.name}</span>
                 </div>
               </div>
               <div className="flex flex-col items-end pb-1">

@@ -10,6 +10,7 @@ import Link from 'next/link';
 
 export default function PerfilDoador() {
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -33,6 +34,15 @@ export default function PerfilDoador() {
         .single();
 
       setUserProfile(profile);
+
+      const { data: donations } = await supabase
+        .from('donations')
+        .select('*')
+        .eq('profile_id', session.user.id)
+        .order('donation_date', { ascending: false });
+        
+      if (donations) setHistory(donations);
+
       setLoading(false);
     }
     getUser();
@@ -42,6 +52,15 @@ export default function PerfilDoador() {
     await supabase.auth.signOut();
     router.push('/');
   };
+
+  // Lógica de Agrupamento por Ano para Selos
+  const donationsByYear: Record<string, any[]> = {};
+  history.forEach(d => {
+    const year = new Date(d.donation_date).getFullYear().toString();
+    if (!donationsByYear[year]) donationsByYear[year] = [];
+    donationsByYear[year].push(d);
+  });
+  const availableYears = Object.keys(donationsByYear).sort((a, b) => Number(b) - Number(a));
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -93,7 +112,7 @@ export default function PerfilDoador() {
 
       <div className="px-6 pb-6 space-y-6">
         
-        {/* Foto de Perfil Centralizada */}
+        /* Foto de Perfil Centralizada */
         <div className="flex flex-col items-center justify-center pt-4 pb-6">
           <label className={`relative group/avatar cursor-pointer block ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
             <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploading} />
@@ -111,6 +130,42 @@ export default function PerfilDoador() {
             </div>
           </label>
         </div>
+
+        {/* Coleção de Selos (Gamificação Anual) */}
+        {availableYears.length > 0 && (
+          <div>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-2 mb-3">Sua Coleção de Selos</h3>
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
+              {availableYears.map(year => {
+                const count = donationsByYear[year].length;
+                const badge: BadgeType = calculateBadge(userProfile.sex || 'Outro', count);
+                const theme = getBadgeColors(badge);
+
+                if (badge === 'Nenhum') return null;
+
+                let bgGradient = 'from-slate-100 to-slate-300';
+                let textColor = 'text-slate-800';
+                if (badge === 'Bronze') bgGradient = 'from-amber-700 to-amber-900', textColor = 'text-amber-100';
+                if (badge === 'Prata') bgGradient = 'from-slate-300 to-slate-500', textColor = 'text-white';
+                if (badge === 'Ouro') bgGradient = 'from-yellow-400 to-amber-500', textColor = 'text-white';
+                if (badge === 'Platina') bgGradient = 'from-cyan-100 to-cyan-300', textColor = 'text-cyan-900';
+                if (badge === 'Rubi') bgGradient = 'from-red-500 to-red-700', textColor = 'text-white';
+                if (badge === 'Pérola') bgGradient = 'from-stone-100 to-stone-200', textColor = 'text-stone-700';
+                if (badge === 'Diamante') bgGradient = 'from-blue-200 to-blue-400', textColor = 'text-blue-900';
+
+                return (
+                  <div key={year} className="min-w-[110px] bg-white border border-slate-100 p-4 rounded-3xl shadow-sm flex flex-col items-center justify-center flex-shrink-0">
+                    <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${bgGradient} ${textColor} shadow-lg border-[3px] border-white flex items-center justify-center flex-col leading-none mb-3`}>
+                      <Award size={18} className="mb-0.5 opacity-80" />
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mb-0.5">{year}</span>
+                    <span className="text-sm font-bold text-slate-800 tracking-tight">{badge}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Informações da Conta (Editável) */}
         <div>
