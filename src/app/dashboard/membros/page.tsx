@@ -1,26 +1,94 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Users, Search, Award, X, QrCode } from 'lucide-react';
+import {
+  Users,
+  Search,
+  X,
+  CheckCircle2,
+  Clock,
+  Printer,
+  ChevronRight,
+  Filter,
+  MessageSquareWarning,
+  Check,
+  ArrowLeft,
+  Award,
+  Sparkles,
+  Heart,
+  Star,
+  Calendar,
+} from 'lucide-react';
+import Link from 'next/link';
 import QRCode from "react-qr-code";
 import { createClient } from '@/lib/supabase';
-import { calculateBadge, getBadgeColors, BadgeType } from '@/utils/donationRules';
+import {
+  calculateBadge,
+  BadgeType,
+  checkEligibilityForDate,
+  calculateNextDonationDate,
+  parseSafeDate,
+  validateNewDonation,
+  getMaxDonationsPerYear,
+  GroupCampaign,
+} from '@/utils/donationRules';
+import {
+  fetchProjectConfig,
+  DEFAULT_PROJECT_CONFIG,
+  ProjectConfig,
+  fetchGroupCampaigns,
+  fetchSpecialBadgesStore,
+  toggleUserSpecialBadge,
+  toggleUserMutiraoBadge,
+  grantBatchFounderBadges,
+  grantBatchMutiraoBadges,
+  UserSpecialBadges,
+} from '@/lib/campaigns';
+import { DonorCard } from '@/components/DonorCard';
+
+type FilterType = 'todos' | 'aptos' | 'intervalo' | 'pendentes' | 'chamados';
+
+function parseTicket(themePref?: string | null) {
+  if (!themePref || !themePref.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(themePref);
+    if (parsed && parsed.message && parsed.status === 'Pendente') {
+      return parsed as { type: string; message: string; createdAt: string; status: string };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export default function Membros() {
   const [membros, setMembros] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('todos');
   const [loading, setLoading] = useState(true);
   const [editingMembro, setEditingMembro] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [selectedMembros, setSelectedMembros] = useState<string[]>([]);
+  const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
+  const [campaigns, setCampaigns] = useState<GroupCampaign[]>([]);
+  const [specialBadgesStore, setSpecialBadgesStore] = useState<Record<string, UserSpecialBadges>>({});
   const supabase = createClient();
 
   async function fetchMembros() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*, cards(valid_until, status)')
-      .order('name', { ascending: true });
-      
-    if (data) setMembros(data);
+    const [membrosRes, cfg, loadedCampaigns, badgesStoreRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('*, cards(status)')
+        .order('name', { ascending: true }),
+      fetchProjectConfig(supabase),
+      fetchGroupCampaigns(supabase),
+      fetchSpecialBadgesStore(supabase),
+    ]);
+
+    if (membrosRes.data) setMembros(membrosRes.data);
+    if (cfg) setProjectConfig(cfg);
+    if (loadedCampaigns) setCampaigns(loadedCampaigns);
+    if (badgesStoreRes) setSpecialBadgesStore(badgesStoreRes.store);
     setLoading(false);
   }
 
@@ -33,389 +101,813 @@ export default function Membros() {
     setSaving(true);
     await supabase
       .from('profiles')
-      .update({ 
+      .update({
         is_active: editingMembro.is_active,
-        donationsThisYear: editingMembro.donationsThisYear
+        donations_this_year: editingMembro.donations_this_year || 0,
       })
       .eq('id', editingMembro.id);
-    
+
     await fetchMembros();
     setEditingMembro(null);
     setSaving(false);
   };
 
+  const handleResolveTicket = async (membroId: string) => {
+    await supabase
+      .from('profiles')
+      .update({ theme_preference: 'light' })
+      .eq('id', membroId);
+    await fetchMembros();
+    if (editingMembro && editingMembro.id === membroId) {
+      setEditingMembro({ ...editingMembro, theme_preference: 'light' });
+    }
+  };
+
+  const filteredMembros = membros.filter((m) => {
+    const term = searchTerm.toLowerCase().trim();
+    const matchesSearch =
+      !term ||
+      (m.name && m.name.toLowerCase().includes(term)) ||
+      (m.blood_type && m.blood_type.toLowerCase().includes(term)) ||
+      (m.role && m.role.toLowerCase().includes(term));
+
+    if (!matchesSearch) return false;
+
+    const elig = checkEligibilityForDate(m.sex || 'M', m.last_donation_date, new Date());
+    const cardStatus = Array.isArray(m.cards) ? m.cards[0]?.status : m.cards?.status;
+    const ticket = parseTicket(m.theme_preference);
+
+    if (activeFilter === 'aptos') return elig.isEligible;
+    if (activeFilter === 'intervalo') return !elig.isEligible;
+    if (activeFilter === 'pendentes') return cardStatus !== 'Ativa';
+    if (activeFilter === 'chamados') return Boolean(ticket);
+
+    return true;
+  });
+
+  const editingCardObj = editingMembro
+    ? Array.isArray(editingMembro.cards)
+      ? editingMembro.cards[0]
+      : editingMembro.cards
+    : null;
+  const editingCardStatus = editingCardObj?.status === 'Revogada' ? 'Revogada' : 'Ativa';
+  const editingTicket = editingMembro ? parseTicket(editingMembro.theme_preference) : null;
+
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="flex flex-col min-h-full">
+      {/* Header Slim Mobile (Idêntico ao restante do App) */}
+      <div className="px-6 pt-8 pb-4 bg-white/90 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Membros e Doadores</h1>
-          <p className="text-slate-500 mt-1">Gerencie status, aprove carteirinhas e acompanhe o rankeamento dos doadores.</p>
+          <Link
+            href="/dashboard"
+            className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 mb-1 font-normal"
+          >
+            <ArrowLeft size={13} /> Voltar para Gestão
+          </Link>
+          <h1 className="text-xl font-semibold text-slate-900 tracking-tight flex items-center gap-2">
+            Membros
+            <span className="text-xs font-normal text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full">
+              {filteredMembros.length}
+            </span>
+          </h1>
+        </div>
+
+        {selectedMembros.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                const updates = selectedMembros.map((id) => ({
+                  profile_id: id,
+                  status: 'Ativa',
+                }));
+                await supabase.from('cards').upsert(updates, { onConflict: 'profile_id' });
+                await supabase
+                  .from('profiles')
+                  .update({ is_active: true })
+                  .in('id', selectedMembros);
+                alert(`${selectedMembros.length} membros ativados com sucesso!`);
+                setSelectedMembros([]);
+                fetchMembros();
+              }}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-normal transition-colors shrink-0"
+            >
+              Ativar ({selectedMembros.length})
+            </button>
+            <button
+              onClick={async () => {
+                const { error } = await grantBatchFounderBadges(supabase, selectedMembros, true);
+                if (error) alert('Erro ao conceder medalha de Fundador: ' + error);
+                else {
+                  alert(`Medalha de Membro Fundador concedida para ${selectedMembros.length} membros!`);
+                  setSelectedMembros([]);
+                  fetchMembros();
+                }
+              }}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-full text-xs font-normal transition-colors shrink-0 inline-flex items-center gap-1"
+            >
+              <Award size={13} /> Fundador ({selectedMembros.length})
+            </button>
+            <button
+              onClick={async () => {
+                const updates = selectedMembros.map((id) => ({
+                  profile_id: id,
+                  status: 'Revogada',
+                }));
+                await supabase.from('cards').upsert(updates, { onConflict: 'profile_id' });
+                await supabase
+                  .from('profiles')
+                  .update({ is_active: false })
+                  .in('id', selectedMembros);
+                alert(`${selectedMembros.length} membros desativados.`);
+                setSelectedMembros([]);
+                fetchMembros();
+              }}
+              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-full text-xs font-normal transition-colors shrink-0"
+            >
+              Desativar ({selectedMembros.length})
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 py-5 space-y-4">
+
+      {/* Barra de Busca e Menu Suspenso de Filtro */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nome ou tipo sanguíneo..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-50/50 text-slate-800 text-sm font-normal"
+            />
+          </div>
+
+          {/* Menu Suspenso de Filtro (Melhores Práticas UX/UI Mobile) */}
+          <div className="relative shrink-0 sm:w-64">
+            <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
+            <select
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value as FilterType)}
+              className="w-full appearance-none pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 bg-white text-slate-700 text-xs sm:text-sm font-normal cursor-pointer transition-colors hover:border-slate-300"
+            >
+              <option value="todos">Todos os membros</option>
+              <option value="aptos">Aptos para doar (60d/120d)</option>
+              <option value="intervalo">Em intervalo biológico</option>
+              <option value="pendentes">Carteirinha pendente/revogada</option>
+              <option value="chamados">Com Solicitação / Bug</option>
+            </select>
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">
+              ▼
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-red-50 shadow-sm overflow-hidden relative">
-        <div className="p-4 border-b border-red-50 flex flex-col sm:flex-row gap-4 justify-between items-center bg-red-50/20">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Pesquisar por nome, sangue ou status..." 
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 bg-white"
-            />
-          </div>
-          {selectedMembros.length > 0 && (
-            <button
-              onClick={async () => {
-                const validUntil = new Date();
-                validUntil.setFullYear(validUntil.getFullYear() + 1);
-                const updates = selectedMembros.map(id => ({ profile_id: id, status: 'Ativa', valid_until: validUntil.toISOString().split('T')[0] }));
-                const { error } = await supabase.from('cards').upsert(updates, { onConflict: 'profile_id' });
-                if (error) alert('Erro: ' + error.message);
-                else { alert(`${selectedMembros.length} carteirinhas renovadas por 1 ano!`); setSelectedMembros([]); fetchMembros(); }
-              }}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-medium transition-colors whitespace-nowrap shadow-sm shadow-slate-300"
-            >
-              Renovar Selecionados ({selectedMembros.length})
-            </button>
-          )}
+      {/* Conteúdo: Lista Organizada */}
+      {loading ? (
+        <div className="p-12 text-center text-slate-400 text-sm font-normal">Carregando membros...</div>
+      ) : filteredMembros.length === 0 ? (
+        <div className="p-12 text-center flex flex-col items-center justify-center text-slate-400 bg-white rounded-2xl border border-slate-200/80">
+          <Users size={32} className="text-slate-300 mb-2" />
+          <p className="text-sm font-normal text-slate-600">Nenhum membro encontrado com este filtro.</p>
         </div>
-        
-        {loading ? (
-          <div className="p-12 text-center text-slate-500">
-            Carregando membros...
+      ) : (
+        <>
+          {/* VISÃO MOBILE: Cards Limpos e Espaçados */}
+          <div className="block md:hidden space-y-3">
+            {filteredMembros.map((membro) => {
+              const elig = checkEligibilityForDate(
+                membro.sex || 'M',
+                membro.last_donation_date,
+                new Date()
+              );
+              const badge: BadgeType = calculateBadge(
+                membro.sex || 'Outro',
+                membro.donations_this_year || 0
+              );
+              const ticket = parseTicket(membro.theme_preference);
+
+              return (
+                <div
+                  key={membro.id}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-4 space-y-3 shadow-none hover:border-slate-300 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-700 overflow-hidden flex items-center justify-center font-medium text-sm shrink-0 border border-slate-200">
+                        {membro.avatar_url ? (
+                          <img src={membro.avatar_url} alt={membro.name} className="w-full h-full object-cover" />
+                        ) : membro.name ? (
+                          membro.name.charAt(0).toUpperCase()
+                        ) : (
+                          '?'
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-medium text-slate-900 leading-tight flex items-center gap-1.5">
+                          {membro.name}
+                          {ticket && (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-normal">
+                              <MessageSquareWarning size={10} /> {ticket.type}
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-slate-600 mt-0.5 font-normal">
+                          {membro.sex === 'F' ? 'Feminino (120d)' : 'Masculino (60d)'} •{' '}
+                          {membro.is_active ? 'Ativo' : 'Inativo'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 text-xs font-semibold shrink-0">
+                      {membro.blood_type || '-'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                    <div>
+                      {elig.isEligible ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-normal">
+                          <CheckCircle2 size={12} /> Apto para doar
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full font-normal">
+                          <Clock size={12} /> Apto em{' '}
+                          {elig.nextEligibleDate?.toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {badge !== 'Nenhum' && (
+                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-normal">
+                          {badge}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setEditingMembro(membro)}
+                        className="text-slate-700 hover:text-slate-900 font-medium inline-flex items-center gap-0.5 text-xs py-1 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
+                      >
+                        Gerenciar <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ) : membros.length === 0 ? (
-          <div className="p-12 text-center flex flex-col items-center justify-center text-slate-500">
-            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6">
-              <Users size={36} className="text-red-400" />
-            </div>
-            <h3 className="text-xl font-medium text-slate-900 mb-2">Nenhum membro listado</h3>
-            <p className="text-sm">Os doadores cadastrados aparecerão aqui.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+
+          {/* VISÃO DESKTOP: Tabela Limpa e Elegante */}
+          <div className="hidden md:block bg-white rounded-2xl border border-slate-200/80 overflow-hidden">
+            <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="p-4 w-12">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" 
-                      checked={membros.length > 0 && selectedMembros.length === membros.length}
-                      onChange={(e) => setSelectedMembros(e.target.checked ? membros.map(m => m.id) : [])}
+                <tr className="bg-slate-50/70 border-b border-slate-200/80 text-xs text-slate-600 font-medium">
+                  <th className="p-3.5 w-10">
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 rounded border-slate-300 text-red-600 cursor-pointer"
+                      checked={
+                        filteredMembros.length > 0 &&
+                        selectedMembros.length === filteredMembros.length
+                      }
+                      onChange={(e) =>
+                        setSelectedMembros(
+                          e.target.checked ? filteredMembros.map((m) => m.id) : []
+                        )
+                      }
                     />
                   </th>
-                  <th className="p-4 text-sm font-semibold text-slate-600">Membro</th>
-                  <th className="p-4 text-sm font-semibold text-slate-600">Sangue</th>
-                  <th className="p-4 text-sm font-semibold text-slate-600">Role</th>
-                  <th className="p-4 text-sm font-semibold text-slate-600">Selo</th>
-                  <th className="p-4 text-sm font-semibold text-slate-600">Ações</th>
+                  <th className="p-3.5 font-medium">Membro</th>
+                  <th className="p-3.5 font-medium">Sangue</th>
+                  <th className="p-3.5 font-medium">Situação</th>
+                  <th className="p-3.5 font-medium">Carteirinha</th>
+                  <th className="p-3.5 font-medium text-right">Ação</th>
                 </tr>
               </thead>
-              <tbody>
-                {membros.map((membro) => {
-                  const badge: BadgeType = calculateBadge(membro.sex || 'Outro', membro.donations_this_year || 0);
-                  const theme = getBadgeColors(badge);
-                  
+              <tbody className="divide-y divide-slate-100">
+                {filteredMembros.map((membro) => {
+                  const elig = checkEligibilityForDate(
+                    membro.sex || 'M',
+                    membro.last_donation_date,
+                    new Date()
+                  );
+                  const cardStatus = Array.isArray(membro.cards)
+                    ? membro.cards[0]?.status
+                    : membro.cards?.status;
+                  const ticket = parseTicket(membro.theme_preference);
+
                   return (
-                    <tr key={membro.id} className="border-b border-slate-50 hover:bg-red-50/20 transition-colors">
-                      <td className="p-4">
-                        <input 
-                          type="checkbox" 
-                          className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" 
+                    <tr key={membro.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3.5">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-red-600 cursor-pointer"
                           checked={selectedMembros.includes(membro.id)}
                           onChange={(e) => {
-                            if (e.target.checked) setSelectedMembros([...selectedMembros, membro.id]);
-                            else setSelectedMembros(selectedMembros.filter(id => id !== membro.id));
+                            if (e.target.checked)
+                              setSelectedMembros([...selectedMembros, membro.id]);
+                            else
+                              setSelectedMembros(
+                                selectedMembros.filter((id) => id !== membro.id)
+                              );
                           }}
                         />
                       </td>
-                      <td className="p-4">
-                        <div className="font-semibold text-slate-900">{membro.name}</div>
-                        <div className="text-xs text-slate-500">{membro.is_active ? 'Ativo' : 'Inativo'}</div>
+                      <td className="p-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 overflow-hidden flex items-center justify-center font-medium text-xs shrink-0 border border-slate-200">
+                            {membro.avatar_url ? (
+                              <img src={membro.avatar_url} alt={membro.name} className="w-full h-full object-cover" />
+                            ) : membro.name ? (
+                              membro.name.charAt(0).toUpperCase()
+                            ) : (
+                              '?'
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-slate-900 flex items-center gap-1.5">
+                              {membro.name}
+                              {ticket && (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-normal">
+                                  <MessageSquareWarning size={10} /> {ticket.type}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-600 font-normal">
+                              {membro.sex === 'F' ? 'Feminino (120d)' : 'Masculino (60d)'} •{' '}
+                              {membro.is_active ? 'Ativo' : 'Inativo'}
+                            </div>
+                          </div>
+                        </div>
                       </td>
-                      <td className="p-4 font-bold text-red-600">{membro.blood_type || '-'}</td>
-                      <td className="p-4 text-sm text-slate-600">{membro.role}</td>
-                      <td className="p-4">
-                        {badge !== 'Nenhum' ? (
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${theme.bg} ${theme.text}`}>
-                            <Award size={12} /> {badge}
+                      <td className="p-3.5">
+                        <span className="font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded text-xs">
+                          {membro.blood_type || '-'}
+                        </span>
+                      </td>
+                      <td className="p-3.5">
+                        {elig.isEligible ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-normal">
+                            <CheckCircle2 size={12} /> Apto
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-400">Sem selo</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full font-normal">
+                            <Clock size={12} /> {elig.nextEligibleDate?.toLocaleDateString('pt-BR')}
+                          </span>
                         )}
                       </td>
-                      <td className="p-4">
-                        <button 
+                      <td className="p-3.5">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full font-normal ${
+                            cardStatus === 'Ativa'
+                              ? 'text-slate-600 bg-slate-100'
+                              : 'text-amber-700 bg-amber-50'
+                          }`}
+                        >
+                          {cardStatus || 'Pendente'}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <button
                           onClick={() => setEditingMembro(membro)}
-                          className="text-sm font-medium text-red-600 hover:text-red-800"
+                          className="text-xs font-normal text-slate-700 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
                         >
                           Gerenciar
                         </button>
                       </td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
           </div>
-        )}
+        </>
+      )}
 
-        {/* Modal de Edição */}
-        {editingMembro && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl relative border border-slate-200">
-              <button 
-                onClick={() => setEditingMembro(null)} 
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+      {/* MODAL DE GERENCIAMENTO E CARTEIRINHA */}
+      {editingMembro && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-xl border border-slate-200 relative my-6 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">
+                  {editingMembro.name}
+                </h2>
+                <p className="text-xs text-slate-600 font-normal">
+                  {editingMembro.blood_type || 'Sangue não inf.'} •{' '}
+                  {editingMembro.sex === 'F' ? 'Feminino (120d)' : 'Masculino (60d)'}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingMembro(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
               >
-                <X size={24} />
+                <X size={18} />
               </button>
-              
-              <h2 className="text-xl font-bold text-slate-900 mb-1">Gerenciar Membro</h2>
-              <p className="text-sm text-slate-500 mb-6">Atualize os dados de {editingMembro.name}</p>
+            </div>
 
-              <div className="space-y-4">
-                
-                {/* Status da Conta */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <label className="block text-sm font-semibold text-slate-900 mb-2">Status da Conta</label>
-                  <select 
-                    value={editingMembro.is_active ? 'true' : 'false'}
-                    onChange={(e) => setEditingMembro({...editingMembro, is_active: e.target.value === 'true'})}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-100 bg-white"
-                  >
-                    <option value="true">Ativo (Permitir acesso)</option>
-                    <option value="false">Inativo (Bloquear acesso)</option>
-                  </select>
-                </div>
+            <div className="space-y-4 text-xs sm:text-sm">
+              {/* Prévia Interativa da Carteirinha do Membro (Com Arte do Canva e 3x4) */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                <p className="text-[11px] text-slate-500 mb-2 font-normal text-center">
+                  Prévia da Carteirinha do Membro (Toque para virar frente/verso)
+                </p>
+                <DonorCard
+                  id={editingMembro.id}
+                  name={editingMembro.name || 'Doador'}
+                  bloodType={editingMembro.blood_type || '-'}
+                  avatarUrl={editingMembro.avatar_url}
+                  status={editingCardStatus}
+                  compact
+                />
+              </div>
 
-                {/* Nova Doação */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <label className="block text-sm font-semibold text-slate-900 mb-2 flex justify-between">
-                    <span>Nova Doação</span>
-                    <span className="text-xs text-red-600 bg-red-100 px-2 py-0.5 rounded-full font-bold">
-                      {editingMembro.donations_this_year || 0} no ano
+              {/* Solicitação / Bug Reportado pelo Membro */}
+              {editingTicket && (
+                <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/70 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-amber-900 flex items-center gap-1.5 text-xs">
+                      <MessageSquareWarning size={14} /> Chamado Aberto: {editingTicket.type}
                     </span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="date" 
-                      id="novaDoacaoDate"
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-100 bg-white"
-                    />
-                    <button 
+                    <button
                       type="button"
-                      onClick={async () => {
-                        const dateInput = document.getElementById('novaDoacaoDate') as HTMLInputElement;
-                        if (!dateInput || !dateInput.value) {
-                          alert('Por favor, selecione uma data.');
-                          return;
-                        }
-                        
-                        setSaving(true);
-                        const { error } = await supabase.from('donations').insert({
-                          profile_id: editingMembro.id,
-                          donation_date: dateInput.value
-                        });
-                        
-                        if (error) {
-                          alert('Erro ao registrar: ' + error.message);
-                        } else {
-                          dateInput.value = '';
-                          await fetchMembros();
-                          const { data: updatedMembro } = await supabase.from('profiles').select('*').eq('id', editingMembro.id).single();
-                          setEditingMembro(updatedMembro);
-                        }
-                        setSaving(false);
-                      }}
-                      className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-md shadow-red-200/50 whitespace-nowrap"
+                      onClick={() => handleResolveTicket(editingMembro.id)}
+                      className="inline-flex items-center gap-1 text-[11px] bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors"
                     >
-                      Salvar
+                      <Check size={12} /> Marcar Resolvido
                     </button>
                   </div>
+                  <p className="text-xs text-amber-900 bg-white/80 p-2.5 rounded-lg border border-amber-200/60">
+                    {editingTicket.message}
+                  </p>
                 </div>
+              )}
 
-                {/* Preview Carteirinha 1.0 */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
-                  <label className="block text-sm font-semibold text-slate-900 mb-4 self-start">Gerenciar Carteirinha</label>
-                  
-                  <div id="carteirinha-print" className="hidden print:!flex w-full flex-col sm:flex-row gap-4 mb-6">
-                    {/* Frente */}
-                    <div className="carteirinha-lado w-full bg-gradient-to-br from-[#E63946] to-[#b91c28] rounded-[2rem] p-6 shadow-[0_20px_50px_-12px_rgba(230,57,70,0.5)] relative overflow-hidden flex flex-col justify-between text-white border border-white/20 aspect-[1.586/1] max-w-sm print:!w-[3.375in] print:!h-[2.125in] print:!p-4 print:!m-0 print:!shadow-none print:!rounded-[1.5rem] print:![color-adjust:exact]">
-                      
-                      {/* Efeito de Reflexo (Oculto na impressão) */}
-                      <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 transform -skew-x-12 translate-x-[-100%] animate-[shimmer_4s_infinite] print:hidden"></div>
-                      
-                      {/* Topo do Cartão */}
-                      <div className="flex justify-between items-start relative z-10">
-                        <div className="flex flex-col">
-                          <span className="text-[12px] font-black tracking-[0.2em] text-white uppercase drop-shadow-sm">O Bom Amigo</span>
-                          <span className="text-[8px] text-slate-200/80 uppercase tracking-widest font-medium">Carteirinha do Doador</span>
-                        </div>
-                        
-                        <div className="w-12 h-12 bg-white rounded-xl shadow-lg border border-red-200/50 flex items-center justify-center p-1.5 overflow-hidden print:shadow-none print:border-slate-200">
-                          <img src="/logo.png" alt="O Bom Amigo" className="w-full h-full object-contain drop-shadow-sm print:drop-shadow-none" />
-                        </div>
-                      </div>
-                      
-                      {/* Meio do Cartão (Foto 3x4 e Dados) */}
-                      <div className="flex justify-between items-end relative z-10 gap-2">
-                        <div className="flex gap-3 items-end flex-1 min-w-0">
-                          {/* Foto 3x4 */}
-                          {editingMembro.avatar_url ? (
-                            <div className="w-16 h-20 bg-white rounded-md overflow-hidden border-2 border-white/50 shadow-lg print:shadow-none shrink-0">
-                              <img src={editingMembro.avatar_url} alt="Foto" className="object-cover w-full h-full" />
-                            </div>
-                          ) : (
-                            <div className="w-16 h-20 bg-white/10 rounded-md flex items-center justify-center border-2 border-white/30 backdrop-blur-sm shadow-inner print:bg-white/30 shrink-0">
-                              <span className="font-medium text-white/80 text-xl print:text-white">{editingMembro.name.charAt(0)}</span>
-                            </div>
-                          )}
+              {/* Registrar Nova Doação */}
+              <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-slate-800">Registrar Doação</span>
+                  <span className="text-[11px] text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-full font-normal">
+                    {editingMembro.donations_this_year || 0} nos últimos 12 meses
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    id="modalDoacaoDate"
+                    max={new Date().toISOString().split('T')[0]}
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const input = document.getElementById('modalDoacaoDate') as HTMLInputElement;
+                      if (!input || !input.value) return;
+                      setSaving(true);
 
-                          <div className="flex flex-col pb-1 flex-1 min-w-0">
-                            <span className="text-[8px] text-slate-200/80 uppercase tracking-widest mb-0.5">Nome</span>
-                            <span className="text-base sm:text-xl font-medium leading-tight tracking-tight break-words whitespace-normal line-clamp-2 w-full">{editingMembro.name}</span>
-                          </div>
-                        </div>
+                      const { data: memberDonations } = await supabase
+                        .from('donations')
+                        .select('*')
+                        .eq('profile_id', editingMembro.id);
 
-                        <div className="flex flex-col items-end pb-1">
-                          <span className="text-[8px] text-slate-200/80 uppercase tracking-widest mb-0.5">Sangue</span>
-                          <span className="text-3xl font-light tracking-tighter text-white drop-shadow-sm print:drop-shadow-none">{editingMembro.blood_type || '-'}</span>
-                        </div>
-                      </div>
-                      
-                      {/* Rodapé */}
-                      <div className="relative z-10 pt-3 flex justify-end items-end border-t border-white/20 mt-2">
-                        <div className="flex flex-col items-end">
-                          <span className="text-[7px] text-slate-200/80 uppercase tracking-widest mb-0.5">Válidade</span>
-                          <span className="text-[10px] font-mono tracking-widest text-slate-100">
-                            {editingMembro.cards && (Array.isArray(editingMembro.cards) ? editingMembro.cards[0]?.valid_until : editingMembro.cards.valid_until)
-                              ? new Date(Array.isArray(editingMembro.cards) ? editingMembro.cards[0].valid_until : editingMembro.cards.valid_until).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) 
-                              : 'Pendente'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                      const validation = validateNewDonation(
+                        editingMembro.sex,
+                        memberDonations || [],
+                        input.value
+                      );
 
-                    {/* Verso */}
-                    <div className="carteirinha-lado w-full bg-white rounded-[2rem] p-6 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)] relative overflow-hidden flex flex-col justify-between text-slate-800 border border-slate-200 aspect-[1.586/1] max-w-sm print:!w-[3.375in] print:!h-[2.125in] print:!p-4 print:!m-0 print:!shadow-none print:!rounded-[1.5rem] print:![color-adjust:exact]">
-                      <div className="flex flex-col items-center text-center space-y-2 relative z-10 h-full justify-center">
-                        <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center p-1.5 mb-1">
-                          <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
-                        </div>
-                        <p className="text-[8px] leading-tight text-slate-500 font-medium px-4">
-                          Esta carteirinha é somente para identificação de participante. Não serve de comprovação nem como documento oficial para nada.
-                        </p>
-                        
-                        <div className="flex items-center gap-3 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100 w-full justify-center">
-                          <QRCode value="https://movimentooba.vercel.app/" size={48} fgColor="#334155" bgColor="transparent" />
-                          <div className="text-left">
-                            <p className="text-[7px] uppercase tracking-widest text-slate-400 font-bold">Acesse sua conta</p>
-                            <p className="text-[9px] font-bold text-slate-700">movimentooba.vercel.app</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                      if (!validation.allowed) {
+                        alert(validation.reason || 'Data de doação não permitida conforme limites biológicos/anuais.');
+                        setSaving(false);
+                        return;
+                      }
 
-                  <div className="flex flex-col gap-4 mt-2 print:hidden">
-                    
-                    {/* Switch de Status */}
-                    <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                      <span className="font-semibold text-slate-700 text-sm">Status da Carteirinha</span>
-                      <label className="flex items-center cursor-pointer">
-                        <div className="relative">
-                          <input type="checkbox" className="sr-only" 
-                            checked={(editingMembro.cards && (Array.isArray(editingMembro.cards) ? editingMembro.cards[0]?.status : editingMembro.cards.status)) === 'Ativa'}
-                            onChange={async (e) => {
-                              const newStatus = e.target.checked ? 'Ativa' : 'Revogada';
-                              const { error } = await supabase.from('cards').upsert({ profile_id: editingMembro.id, status: newStatus }, { onConflict: 'profile_id' });
-                              if (!error) { 
-                                fetchMembros(); 
-                                setEditingMembro({...editingMembro, cards: Array.isArray(editingMembro.cards) ? [{...editingMembro.cards[0], status: newStatus}] : {...editingMembro.cards, status: newStatus}}); 
-                              }
-                            }}
-                          />
-                          <div className={`block w-12 h-7 rounded-full transition-colors ${(editingMembro.cards && (Array.isArray(editingMembro.cards) ? editingMembro.cards[0]?.status : editingMembro.cards.status) === 'Ativa') ? 'bg-red-600' : 'bg-slate-300'}`}></div>
-                          <div className={`dot absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${(editingMembro.cards && (Array.isArray(editingMembro.cards) ? editingMembro.cards[0]?.status : editingMembro.cards.status) === 'Ativa') ? 'transform translate-x-5' : ''}`}></div>
-                        </div>
-                        <span className="ml-3 text-sm font-bold text-slate-600 min-w-[5rem]">
-                          {(editingMembro.cards && (Array.isArray(editingMembro.cards) ? editingMembro.cards[0]?.status : editingMembro.cards.status) === 'Ativa') ? 'Ativa' : 'Revogada'}
-                        </span>
-                      </label>
-                    </div>
+                      await supabase.from('donations').insert({
+                        profile_id: editingMembro.id,
+                        donation_date: input.value,
+                      });
 
-                    {/* Controle de Renovação */}
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <select id={`renovar-${editingMembro.id}`} className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-700 font-semibold focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none flex-1 shadow-sm">
-                        <option value="1">Renovar por 1 Ano</option>
-                        <option value="2">Renovar por 2 Anos</option>
-                        <option value="5">Renovar por 5 Anos</option>
-                      </select>
-                      <button 
-                        onClick={async () => {
-                          const anos = parseInt((document.getElementById(`renovar-${editingMembro.id}`) as HTMLSelectElement).value);
-                          const validUntil = new Date();
-                          validUntil.setFullYear(validUntil.getFullYear() + anos);
-                          const { error } = await supabase.from('cards').upsert({ profile_id: editingMembro.id, status: 'Ativa', valid_until: validUntil.toISOString().split('T')[0] }, { onConflict: 'profile_id' });
-                          if (!error) { 
-                            alert(`Carteirinha renovada por ${anos} ano(s)!`); 
-                            fetchMembros();
-                            const newDate = validUntil.toISOString().split('T')[0];
-                            setEditingMembro({...editingMembro, cards: Array.isArray(editingMembro.cards) ? [{...editingMembro.cards[0], valid_until: newDate}] : {...editingMembro.cards, valid_until: newDate}}); 
-                          }
-                        }}
-                        className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors shadow-sm whitespace-nowrap"
-                      >
-                        Aplicar Renovação
-                      </button>
-                    </div>
-                  </div>
+                      const nextDate = calculateNextDonationDate(editingMembro.sex || 'M', input.value);
+                      const oneYearAgo = new Date(input.value);
+                      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                      oneYearAgo.setHours(0, 0, 0, 0);
 
-                  <button 
-                    onClick={() => window.print()}
-                    className="w-full mt-2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium transition-colors print:hidden"
+                      const allDonations = [...(memberDonations || []), { donation_date: input.value }];
+                      const rollingCount = allDonations.filter((d) => {
+                        const p = parseSafeDate(d.donation_date);
+                        return p && p > oneYearAgo;
+                      }).length;
+
+                      await supabase
+                        .from('profiles')
+                        .update({
+                          last_donation_date: input.value,
+                          next_donation_date: nextDate ? nextDate.toISOString().split('T')[0] : null,
+                          donations_this_year: rollingCount,
+                        })
+                        .eq('id', editingMembro.id);
+
+                      input.value = '';
+                      await fetchMembros();
+                      const { data: updated } = await supabase
+                        .from('profiles')
+                        .select('*, cards(status)')
+                        .eq('id', editingMembro.id)
+                        .single();
+                      setEditingMembro(updated);
+                      setSaving(false);
+                      alert('Doação registrada com sucesso!');
+                    }}
+                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-normal transition-colors"
                   >
-                    Imprimir Carteirinha
+                    Salvar
                   </button>
+                </div>
+              </div>
 
-                  {/* Informações da Carteirinha */}
-                  <div className="grid grid-cols-3 items-center mt-2 w-full px-2">
-                    <div className="flex flex-col text-left">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Cadastro</span>
-                      <span className="text-sm font-medium text-slate-800">
-                        {editingMembro.created_at ? new Date(editingMembro.created_at).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : '--/--/----'}
-                      </span>
+              {/* Status da Carteirinha (Ativar / Desativar) */}
+              <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex items-center justify-between">
+                <div>
+                  <span className="font-medium text-slate-800 block text-xs sm:text-sm">Carteirinha do Membro</span>
+                  <span className="text-[11px] text-slate-500 font-normal">
+                    {editingCardStatus === 'Ativa' ? 'Carteirinha Ativa' : 'Carteirinha Desativada'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const currentStatus = Array.isArray(editingMembro.cards)
+                      ? editingMembro.cards[0]?.status
+                      : editingMembro.cards?.status;
+                    const newStatus = currentStatus === 'Ativa' ? 'Revogada' : 'Ativa';
+                    await supabase.from('cards').upsert(
+                      { profile_id: editingMembro.id, status: newStatus },
+                      { onConflict: 'profile_id' }
+                    );
+                    await fetchMembros();
+                    setEditingMembro({
+                      ...editingMembro,
+                      cards: Array.isArray(editingMembro.cards)
+                        ? [{ ...editingMembro.cards[0], status: newStatus }]
+                        : { ...editingMembro.cards, status: newStatus },
+                    });
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                    editingCardStatus === 'Ativa'
+                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                      : 'bg-red-100 text-red-800 hover:bg-red-200'
+                  }`}
+                >
+                  {editingCardStatus === 'Ativa' ? 'Ativa (Toque p/ desativar)' : 'Desativada (Toque p/ ativar)'}
+                </button>
+              </div>
+
+              {/* Status da Conta */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50">
+                <span className="font-medium text-slate-800">Acesso à Conta</span>
+                <select
+                  value={editingMembro.is_active ? 'true' : 'false'}
+                  onChange={(e) =>
+                    setEditingMembro({
+                      ...editingMembro,
+                      is_active: e.target.value === 'true',
+                    })
+                  }
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs text-slate-800"
+                >
+                  <option value="true">Ativo</option>
+                  <option value="false">Bloqueado</option>
+                </select>
+              </div>
+
+              {/* Gerenciamento de Medalhas Especiais do Membro (Fundador, Mutirões, SOS) */}
+              <div className="p-4 rounded-2xl border border-amber-200/90 bg-amber-50/40 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-900 flex items-center gap-1.5 text-xs sm:text-sm">
+                    <Award size={16} className="text-amber-600" /> Medalhas Especiais do Membro
+                  </span>
+                  <span className="text-[10px] text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-full font-medium">
+                    Exclusivo ADM
+                  </span>
+                </div>
+
+                {/* 1. Medalha de Membro Fundador (2026) */}
+                <div className="bg-white p-3 rounded-xl border border-amber-200/70 flex items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                      <Star size={16} className="fill-white" />
                     </div>
-                    <div className="flex flex-col text-center">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">ID Interno</span>
-                      <span className="text-sm font-medium text-slate-800 font-mono">
-                        {editingMembro.id.split('-')[0].toUpperCase()}
-                      </span>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-800">Membro Fundador (2026)</p>
+                      <p className="text-[10px] text-slate-500 font-normal">Homenagem aos pioneiros do movimento</p>
                     </div>
-                    <div className="flex flex-col text-right">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Validade</span>
-                      <span className="text-sm font-medium text-slate-800">
-                        {editingMembro.cards && (Array.isArray(editingMembro.cards) ? editingMembro.cards[0]?.valid_until : editingMembro.cards.valid_until)
-                          ? new Date(Array.isArray(editingMembro.cards) ? editingMembro.cards[0].valid_until : editingMembro.cards.valid_until).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) 
-                          : 'Pendente'}
-                      </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { newState, error } = await toggleUserSpecialBadge(supabase, editingMembro.id, 'isFounder');
+                      if (error) alert('Erro ao atualizar: ' + error);
+                      else {
+                        setSpecialBadgesStore((prev) => ({
+                          ...prev,
+                          [editingMembro.id]: {
+                            ...prev[editingMembro.id],
+                            isFounder: newState,
+                          },
+                        }));
+                      }
+                    }}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors shrink-0 ${
+                      specialBadgesStore[editingMembro.id]?.isFounder
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}
+                  >
+                    {specialBadgesStore[editingMembro.id]?.isFounder ? '⭐ Concedida' : '+ Conceder'}
+                  </button>
+                </div>
+
+                {/* 2. Medalha Herói da Rede SOS (Doação de Pessoas que Precisam) */}
+                <div className="bg-white p-3 rounded-xl border border-red-200/70 flex items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-rose-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                      <Heart size={16} className="fill-white" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-800">Herói da Rede SOS</p>
+                      <p className="text-[10px] text-slate-500 font-normal">Doação direta para quem precisava</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { newState, error } = await toggleUserSpecialBadge(supabase, editingMembro.id, 'isSosHero');
+                      if (error) alert('Erro ao atualizar: ' + error);
+                      else {
+                        setSpecialBadgesStore((prev) => ({
+                          ...prev,
+                          [editingMembro.id]: {
+                            ...prev[editingMembro.id],
+                            isSosHero: newState,
+                          },
+                        }));
+                      }
+                    }}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors shrink-0 ${
+                      specialBadgesStore[editingMembro.id]?.isSosHero
+                        ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}
+                  >
+                    {specialBadgesStore[editingMembro.id]?.isSosHero ? '🩸 Concedida' : '+ Conceder'}
+                  </button>
+                </div>
+
+                {/* 3. Medalhas por Mutirão Cadastrado */}
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] font-semibold text-slate-700">
+                    Medalhas por Mutirão ({campaigns.length} cadastrados):
+                  </p>
+                  {campaigns.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 font-normal italic">
+                      Nenhum mutirão cadastrado no momento.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {campaigns.map((camp, idx) => {
+                        const hasBadge = specialBadgesStore[editingMembro.id]?.mutiraoIds?.includes(camp.id);
+                        const mutiraoTitle = `${idx + 1}º Mutirão O Bom Amigo`;
+                        return (
+                          <div
+                            key={camp.id}
+                            className="bg-white p-2.5 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-slate-800">{mutiraoTitle}</p>
+                              <p className="text-[10px] text-slate-500 font-normal">
+                                {new Date(camp.campaign_date).toLocaleDateString('pt-BR')} • {camp.location}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const { hasBadge: newHasBadge, error } = await toggleUserMutiraoBadge(
+                                  supabase,
+                                  editingMembro.id,
+                                  camp.id,
+                                  mutiraoTitle
+                                );
+                                if (error) alert('Erro: ' + error);
+                                else {
+                                  setSpecialBadgesStore((prev) => {
+                                    const currentList = prev[editingMembro.id]?.mutiraoIds || [];
+                                    const updated = newHasBadge
+                                      ? [...currentList, camp.id]
+                                      : currentList.filter((id) => id !== camp.id);
+                                    return {
+                                      ...prev,
+                                      [editingMembro.id]: {
+                                        ...prev[editingMembro.id],
+                                        mutiraoIds: updated,
+                                      },
+                                    };
+                                  });
+                                }
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors shrink-0 ${
+                                hasBadge
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {hasBadge ? '🏅 Medalha Ativa' : '+ Liberar Medalha'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Impressão A4 Completa (Frente com Identidade Oficial + Foto 3x4 e Verso com QR Code) */}
+              <div id="carteirinha-print" className="hidden print:!flex flex-col gap-6 items-center">
+                {/* FRENTE IMPRESSÃO */}
+                <div
+                  className="carteirinha-lado print:!w-[3.375in] print:!h-[2.125in] print:!p-4 text-white rounded-xl relative overflow-hidden flex flex-col justify-between"
+                  style={{ background: 'linear-gradient(135deg, #b91c1c, #7f1d1d)' }}
+                >
+                  <div className="flex justify-between items-start relative z-10">
+                    <span className="text-xs font-semibold uppercase tracking-wider">O Bom Amigo</span>
+                    <span className="text-sm font-bold bg-black/25 px-2.5 py-0.5 rounded-lg">
+                      {editingMembro.blood_type || '-'}
+                    </span>
+                  </div>
+                  <div className="flex items-end gap-3 relative z-10 mt-auto">
+                    <div className="w-12 h-15 rounded-lg bg-white p-0.5 overflow-hidden shrink-0">
+                      {editingMembro.avatar_url ? (
+                        <img
+                          src={editingMembro.avatar_url}
+                          alt={editingMembro.name}
+                          className="w-full h-full object-cover rounded-md"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold">
+                          {editingMembro.name?.charAt(0) || '?'}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{editingMembro.name}</p>
+                      <p className="text-[10px] opacity-90 font-mono">
+                        ID #{editingMembro.id?.substring(0, 6).toUpperCase()} • Membro Oficial
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <button 
+                {/* VERSO IMPRESSÃO COM QR CODE */}
+                <div className="carteirinha-lado print:!w-[3.375in] print:!h-[2.125in] print:!p-4 bg-slate-900 text-white rounded-xl flex items-center justify-between gap-4">
+                  <div className="bg-white p-2 rounded-lg shrink-0">
+                    <QRCode
+                      value={`https://movimentooba.vercel.app/validar/${editingMembro.id}`}
+                      size={76}
+                      fgColor="#0f172a"
+                    />
+                  </div>
+                  <div className="text-[10px] space-y-1 text-slate-200">
+                    <p className="font-semibold text-white text-xs">Validação Oficial</p>
+                    <p>Escaneie o QR Code para verificar a autenticidade do membro.</p>
+                    <p className="text-slate-400">ID #{editingMembro.id?.substring(0, 8).toUpperCase()}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-normal flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Printer size={14} /> Imprimir (A4)
+                </button>
+                <button
+                  type="button"
                   onClick={handleSaveMembro}
                   disabled={saving}
-                  className="w-full mt-4 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors disabled:opacity-70"
+                  className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-normal transition-colors disabled:opacity-50"
                 >
-                  {saving ? 'Processando...' : 'Fechar'}
+                  {saving ? 'Salvando...' : 'Concluir'}
                 </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
       </div>
     </div>
   );

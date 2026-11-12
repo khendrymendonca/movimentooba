@@ -3,17 +3,40 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Camera, LogOut, Settings, Shield, UserCog, CreditCard, Award } from 'lucide-react';
-import { getBadgeColors, calculateBadge, BadgeType } from '@/utils/donationRules';
-import Image from 'next/image';
 import Link from 'next/link';
+import {
+  Camera,
+  LogOut,
+  LifeBuoy,
+  Check,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  User,
+  IdCard,
+  Bug,
+  Clock,
+  ArrowRight,
+} from 'lucide-react';
+import { sanitizeText, validateSafeUpload } from '@/utils/donationRules';
 
 export default function PerfilDoador() {
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
   const [email, setEmail] = useState('');
+  const [originalEmail, setOriginalEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  // Alteração de Senha
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
   const supabase = createClient();
   const router = useRouter();
 
@@ -21,11 +44,13 @@ export default function PerfilDoador() {
     async function getUser() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        router.push('/');
+        router.push('/login');
         return;
       }
-      
-      setEmail(session.user.email || '');
+
+      const currentEmail = session.user.email || '';
+      setEmail(currentEmail);
+      setOriginalEmail(currentEmail);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -34,15 +59,6 @@ export default function PerfilDoador() {
         .single();
 
       setUserProfile(profile);
-
-      const { data: donations } = await supabase
-        .from('donations')
-        .select('*')
-        .eq('profile_id', session.user.id)
-        .order('donation_date', { ascending: false });
-        
-      if (donations) setHistory(donations);
-
       setLoading(false);
     }
     getUser();
@@ -53,46 +69,138 @@ export default function PerfilDoador() {
     router.push('/');
   };
 
-  // Lógica de Agrupamento por Ano para Selos
-  const donationsByYear: Record<string, any[]> = {};
-  history.forEach(d => {
-    const year = new Date(d.donation_date).getFullYear().toString();
-    if (!donationsByYear[year]) donationsByYear[year] = [];
-    donationsByYear[year].push(d);
-  });
-  const availableYears = Object.keys(donationsByYear).sort((a, b) => Number(b) - Number(a));
-
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
+      setFeedback(null);
       const file = e.target.files?.[0];
       if (!file || !userProfile) return;
-      
+
+      const validation = validateSafeUpload(file, {
+        maxSizeMB: 3,
+        allowedTypes: ['image'],
+      });
+
+      if (!validation.valid) {
+        setFeedback({ type: 'error', msg: validation.error || 'Arquivo inválido.' });
+        return;
+      }
+
       setUploading(true);
+      const filePath = `${userProfile.id}/avatar-${Date.now()}.${validation.safeExtension}`;
 
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${userProfile.id}/avatar-${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { contentType: file.type, upsert: true });
 
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const urlWithCacheBust = `${publicUrl}?t=${Date.now()}`;
 
-      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userProfile.id);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlWithCacheBust })
+        .eq('id', userProfile.id);
+
       if (updateError) throw updateError;
 
-      setUserProfile({ ...userProfile, avatar_url: publicUrl });
-    } catch (error: any) {
-      alert('Erro ao enviar foto: ' + error.message);
+      setUserProfile({ ...userProfile, avatar_url: urlWithCacheBust });
+      setFeedback({ type: 'success', msg: 'Foto 3x4 atualizada! Ela já está ativa na sua Carteirinha Digital.' });
+    } catch {
+      setFeedback({ type: 'error', msg: 'Não foi possível enviar a foto. Tente outra imagem.' });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!userProfile) return;
+    setFeedback(null);
+    const cleanName = sanitizeText(userProfile.name, 100);
+    if (cleanName.length < 3) {
+      setFeedback({ type: 'error', msg: 'Informe seu nome completo válido.' });
+      return;
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        name: cleanName,
+        birth_date: userProfile.birth_date || null,
+        sex: userProfile.sex || 'M',
+        blood_type: userProfile.blood_type || 'Não sei',
+      })
+      .eq('id', userProfile.id);
+
+    setSaving(false);
+    if (error) {
+      setFeedback({ type: 'error', msg: 'Erro ao atualizar seus dados pessoais.' });
+    } else {
+      setUserProfile({ ...userProfile, name: cleanName });
+      setFeedback({ type: 'success', msg: 'Dados pessoais atualizados com sucesso!' });
+    }
+  };
+
+  const handleUpdateEmail = async () => {
+    setFeedback(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setFeedback({ type: 'error', msg: 'Informe um endereço de e-mail válido.' });
+      return;
+    }
+    if (cleanEmail === originalEmail) {
+      setFeedback({ type: 'error', msg: 'O e-mail informado já é o seu e-mail atual.' });
+      return;
+    }
+
+    setSavingEmail(true);
+    const { error } = await supabase.auth.updateUser({ email: cleanEmail });
+    setSavingEmail(false);
+
+    if (error) {
+      setFeedback({ type: 'error', msg: error.message || 'Não foi possível alterar o e-mail.' });
+    } else {
+      setOriginalEmail(cleanEmail);
+      setFeedback({
+        type: 'success',
+        msg: 'Solicitação de troca de e-mail enviada! Verifique a caixa de entrada do novo e-mail para confirmar.',
+      });
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    setFeedback(null);
+    const hasLettersAndNumbers = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(newPassword);
+    if (!hasLettersAndNumbers) {
+      setFeedback({
+        type: 'error',
+        msg: 'A nova senha deve ter no mínimo 8 caracteres, contendo letras e números.',
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setFeedback({ type: 'error', msg: 'A confirmação de senha não confere.' });
+      return;
+    }
+
+    setSavingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setSavingPassword(false);
+
+    if (error) {
+      setFeedback({ type: 'error', msg: error.message || 'Não foi possível atualizar a senha.' });
+    } else {
+      setNewPassword('');
+      setConfirmPassword('');
+      setFeedback({ type: 'success', msg: 'Sua senha foi alterada com sucesso!' });
     }
   };
 
   if (loading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center h-full pt-32">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
-        <p className="text-slate-500 font-medium">Carregando perfil...</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mb-4"></div>
       </div>
     );
   }
@@ -100,133 +208,289 @@ export default function PerfilDoador() {
   if (!userProfile) return null;
 
   return (
-    <div className="flex flex-col min-h-full bg-slate-50">
-      <div className="flex justify-between items-center px-6 pt-10 pb-4 bg-slate-50 sticky top-0 z-20">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Meu Perfil</h1>
-        {userProfile.role === 'ADM' && (
-          <Link href="/dashboard" className="bg-red-100 text-red-600 p-2 rounded-xl">
-            <UserCog size={20} />
-          </Link>
-        )}
+    <div className="flex flex-col min-h-full bg-[#f8f9fa] max-w-2xl mx-auto w-full pb-12">
+      {/* Cabeçalho Unificado (Igual para todos os usuários) */}
+      <div className="flex justify-between items-center px-6 pt-8 pb-4 bg-[#f8f9fa] sticky top-0 z-20">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Meu Perfil</h1>
+          <p className="text-xs text-slate-500 font-normal mt-0.5">
+            Foto da carteirinha, dados pessoais, segurança e suporte.
+          </p>
+        </div>
       </div>
 
-      <div className="px-6 pb-6 space-y-6">
-        
-        {/* Foto de Perfil Centralizada */}
-        <div className="flex flex-col items-center justify-center pt-4 pb-6">
-          <label className={`relative group/avatar cursor-pointer block ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-            <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploading} />
+      <div className="px-6 space-y-6">
+        {feedback && (
+          <div
+            className={`p-3.5 rounded-2xl text-xs font-normal border ${
+              feedback.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-red-50 text-red-600 border-red-200'
+            }`}
+          >
+            {feedback.msg}
+          </div>
+        )}
+
+        {/* Foto de Perfil (Usada na Carteirinha Digital) */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 flex items-center gap-4">
+          <label
+            className={`relative group/avatar cursor-pointer shrink-0 ${
+              uploading ? 'opacity-50 pointer-events-none' : ''
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleAvatarUpload}
+              disabled={uploading}
+            />
             {userProfile.avatar_url ? (
-              <div className="w-28 h-28 bg-white rounded-full overflow-hidden border-4 border-white shadow-xl">
-                <Image src={userProfile.avatar_url} alt="Foto" width={112} height={112} className="object-cover w-full h-full" />
+              <div className="w-20 h-24 bg-slate-100 rounded-xl overflow-hidden border-2 border-slate-200 shadow-xs">
+                <img
+                  src={userProfile.avatar_url}
+                  alt="Foto 3x4"
+                  className="object-cover w-full h-full"
+                />
               </div>
             ) : (
-              <div className="w-28 h-28 bg-slate-200 rounded-full flex items-center justify-center border-4 border-white shadow-xl">
-                <Camera size={32} className="text-slate-400" />
+              <div className="w-20 h-24 bg-slate-100 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300">
+                <Camera size={24} className="text-slate-400" />
               </div>
             )}
-            <div className="absolute bottom-0 right-0 bg-red-600 rounded-full p-2 border-2 border-white shadow-lg">
-              <Camera size={16} className="text-white" />
+            <div className="absolute -bottom-1.5 -right-1.5 bg-slate-900 rounded-full p-1.5 border-2 border-white shadow-xs">
+              <Camera size={12} className="text-white" />
             </div>
           </label>
+
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-medium text-slate-900 truncate">
+              {userProfile.name || 'Doador'}
+            </h2>
+            <p className="text-xs text-slate-500 font-normal mt-0.5 leading-relaxed">
+              Toque na foto ao lado para enviar ou atualizar sua foto 3x4 da Carteirinha Digital.
+            </p>
+            {uploading && (
+              <span className="inline-block mt-1.5 text-[11px] text-red-600 font-normal">
+                Enviando nova foto...
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Informações da Conta (Editável) */}
-        <div>
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-2 mb-2">Dados da Conta</h3>
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 space-y-4">
-            
+        {/* 1. Dados Pessoais */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <User size={15} className="text-slate-500" />
+            <h3 className="text-xs font-medium text-slate-800 uppercase tracking-wider">
+              Dados Pessoais
+            </h3>
+          </div>
+
+          <div>
+            <label className="block text-xs font-normal text-slate-600 mb-1">
+              Nome Completo
+            </label>
+            <input
+              type="text"
+              maxLength={100}
+              value={userProfile.name || ''}
+              onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-sm font-normal"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1 ml-1">Nome Completo</label>
-              <input 
-                type="text" 
-                value={userProfile.name || ''} 
-                onChange={(e) => setUserProfile({...userProfile, name: e.target.value})}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 bg-slate-50/50 text-slate-900 font-medium" 
+              <label className="block text-xs font-normal text-slate-600 mb-1">
+                Nascimento
+              </label>
+              <input
+                type="date"
+                value={userProfile.birth_date || ''}
+                onChange={(e) => setUserProfile({ ...userProfile, birth_date: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1 ml-1">Sexo Biológico</label>
-                <select
-                  value={userProfile.sex || ''}
-                  onChange={(e) => setUserProfile({...userProfile, sex: e.target.value})}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 bg-slate-50/50 text-slate-900 font-medium"
-                >
-                  <option value="">Não informado</option>
-                  <option value="M">Masculino</option>
-                  <option value="F">Feminino</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1 ml-1">Tipo Sanguíneo</label>
-                <select
-                  value={userProfile.blood_type || ''}
-                  onChange={(e) => setUserProfile({...userProfile, blood_type: e.target.value})}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 bg-slate-50/50 text-slate-900 font-medium font-mono"
-                >
-                  <option value="">--</option>
-                  <option value="A+">A+</option>
-                  <option value="A-">A-</option>
-                  <option value="B+">B+</option>
-                  <option value="B-">B-</option>
-                  <option value="AB+">AB+</option>
-                  <option value="AB-">AB-</option>
-                  <option value="O+">O+</option>
-                  <option value="O-">O-</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-normal text-slate-600 mb-1">
+                Sexo Biológico
+              </label>
+              <select
+                value={userProfile.sex || 'M'}
+                onChange={(e) => setUserProfile({ ...userProfile, sex: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
+              >
+                <option value="M">Masculino (60d)</option>
+                <option value="F">Feminino (120d)</option>
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1 ml-1">E-mail</label>
-              <input 
-                type="email" 
-                value={email} 
-                disabled 
-                className="w-full px-4 py-3 rounded-2xl border border-slate-100 bg-slate-100/50 text-slate-500 cursor-not-allowed" 
+              <label className="block text-xs font-normal text-slate-600 mb-1">
+                Tipo Sanguíneo
+              </label>
+              <select
+                value={userProfile.blood_type || 'Não sei'}
+                onChange={(e) => setUserProfile({ ...userProfile, blood_type: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
+              >
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+                <option value="Não sei">Não sei ainda</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSaveProfile}
+            disabled={saving}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-normal transition-colors disabled:opacity-60"
+          >
+            {saving ? 'Salvando...' : 'Salvar Dados Pessoais'}
+          </button>
+        </div>
+
+        {/* 2. Alterar E-mail e Senha */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-5">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Lock size={15} className="text-slate-500" />
+            <h3 className="text-xs font-medium text-slate-800 uppercase tracking-wider">
+              E-mail e Senha
+            </h3>
+          </div>
+
+          {/* E-mail */}
+          <div className="space-y-2">
+            <label className="block text-xs font-normal text-slate-600">
+              Endereço de E-mail
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleUpdateEmail}
+                disabled={savingEmail || email.trim().toLowerCase() === originalEmail}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-normal transition-colors disabled:opacity-40 shrink-0"
+              >
+                {savingEmail ? 'Enviando...' : 'Alterar E-mail'}
+              </button>
+            </div>
+          </div>
+
+          {/* Senha */}
+          <div className="space-y-2.5 pt-2 border-t border-slate-100">
+            <label className="block text-xs font-normal text-slate-600">
+              Alterar Senha de Acesso
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="relative flex items-center">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Nova senha (mín. 8)"
+                  className="w-full px-3.5 py-2 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-1.5 p-1.5 text-slate-400 hover:text-slate-700 z-10 cursor-pointer rounded-lg hover:bg-slate-200/50 transition-colors"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Ver senha'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirmar nova senha"
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
               />
             </div>
 
-            <button 
-              onClick={async () => {
-                const { error } = await supabase.from('profiles').update({ 
-                  name: userProfile.name, sex: userProfile.sex, blood_type: userProfile.blood_type 
-                }).eq('id', userProfile.id);
-                if (error) alert('Erro ao salvar.');
-                else alert('Dados atualizados com sucesso!');
-              }}
-              className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold transition-colors shadow-md mt-2"
+            <button
+              type="button"
+              onClick={handleUpdatePassword}
+              disabled={savingPassword || !newPassword}
+              className="w-full py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-normal transition-colors disabled:opacity-40"
             >
-              Salvar Alterações
+              {savingPassword ? 'Atualizando senha...' : 'Atualizar Senha'}
             </button>
           </div>
         </div>
 
-        {/* Privacidade e Termos */}
-        <div>
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <Shield size={20} />
-                </div>
-                <span className="font-medium text-slate-700">Privacidade e Termos</span>
-              </div>
+        {/* 3. Central de Apoio & Chamados com o Gestor */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <LifeBuoy size={16} className="text-red-600" />
+              Central de Apoio & Chamados
+            </h3>
+            <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+              Canal Direto
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-600 font-normal leading-relaxed">
+            Abra um chamado diretamente com a coordenação para ajustes na carteirinha ou relatos técnicos:
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.2 rounded-md block w-fit mb-1">
+                2 dias úteis
+              </span>
+              <span className="font-semibold text-slate-800 block">Ajuste no Nome</span>
+              <span className="text-[10px] text-slate-400">Carteirinha digital</span>
+            </div>
+
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <span className="text-[10px] font-bold text-red-700 bg-red-100/80 px-1.5 py-0.2 rounded-md block w-fit mb-1">
+                5 dias úteis
+              </span>
+              <span className="font-semibold text-slate-800 block">Relato de Bug</span>
+              <span className="text-[10px] text-slate-400">Erros ou melhorias</span>
             </div>
           </div>
+
+          <Link
+            href="/doador/apoio"
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 mt-2"
+          >
+            Acessar Central de Apoio & Meus Chamados
+            <ArrowRight size={14} />
+          </Link>
         </div>
 
-        <button 
+        {/* Botão de Sair */}
+        <button
           onClick={handleLogout}
-          className="w-full mt-4 py-4 bg-white border border-red-100 text-red-600 hover:bg-red-50 rounded-2xl font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+          className="w-full py-3 bg-white border border-slate-200 text-red-600 hover:bg-red-50/40 rounded-2xl font-normal text-xs transition-colors flex items-center justify-center gap-2"
         >
-          <LogOut size={20} />
+          <LogOut size={15} />
           Encerrar Sessão
         </button>
       </div>
-
     </div>
   );
 }

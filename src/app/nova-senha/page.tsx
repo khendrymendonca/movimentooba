@@ -1,175 +1,153 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { Lock, ArrowRight } from 'lucide-react';
-import Link from 'next/link';
+import { Lock, CheckCircle2 } from 'lucide-react';
 
 export default function NovaSenha() {
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    let mounted = true;
-
-    // 1. Escutar alterações de autenticação (disparado pelo Supabase quando lê hash ou token)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      if (event === 'PASSWORD_RECOVERY' || session) {
-        setError(null);
-        setCheckingSession(false);
-      }
-    });
-
-    // 2. Tratar parâmetros da URL (código PKCE ou erro)
-    const initAuth = async () => {
-      if (typeof window === 'undefined') return;
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      
-      const errorMsg = urlParams.get('error_description') || hashParams.get('error_description');
-      if (errorMsg) {
-        if (mounted) {
-          setError(decodeURIComponent(errorMsg.replace(/\+/g, ' ')));
-          setCheckingSession(false);
+    async function initSession() {
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+          const params = new URLSearchParams(hash.substring(1));
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({ access_token, refresh_token });
+            setInitializing(false);
+            return;
+          }
         }
-        return;
-      }
 
-      // Se veio código PKCE
-      const code = urlParams.get('code');
-      if (code) {
-        const { error: codeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (!codeError && mounted) {
-          setError(null);
-          setCheckingSession(false);
+        const queryParams = new URLSearchParams(window.location.search);
+        const code = queryParams.get('code');
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+          setInitializing(false);
           return;
         }
       }
 
-      // Verificar sessão atual
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session && mounted) {
-        setError(null);
-        setCheckingSession(false);
-        return;
-      }
+      await supabase.auth.getSession();
+      setInitializing(false);
+    }
 
-      // Se tiver tokens no hash (#access_token=...), dar tempo para o Supabase processar
-      const hasTokenInHash = window.location.hash.includes('access_token');
-      if (!hasTokenInHash) {
-        // Aguarda 1 segundo antes de concluir que não há sessão
-        setTimeout(() => {
-          if (mounted) {
-            supabase.auth.getSession().then(({ data: { session: s } }) => {
-              if (!s && mounted) {
-                setError("Link de recuperação inválido ou expirado. Por favor, solicite um novo.");
-              }
-              setCheckingSession(false);
-            });
-          }
-        }, 800);
-      }
-    };
+    initSession();
+  }, [supabase]);
 
-    initAuth();
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [supabase.auth]);
-
-  const handleUpdate = async (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
+    const hasLettersAndNumbers = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password);
+    if (!hasLettersAndNumbers) {
+      setError('A nova senha deve ter no mínimo 8 caracteres, contendo letras e números.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('As senhas digitadas não conferem.');
+      return;
+    }
+
+    setLoading(true);
     const { error: updateError } = await supabase.auth.updateUser({
-      password: password
+      password,
     });
 
     if (updateError) {
-      setError(updateError.message);
+      setError('O link de recuperação expirou ou já foi utilizado. Solicite um novo link.');
     } else {
       setSuccess(true);
-      // Fazer logout por segurança ou apenas redirecionar para login
-      await supabase.auth.signOut();
+      setTimeout(() => {
+        router.push('/login');
+      }, 2500);
     }
     setLoading(false);
   };
 
-  if (checkingSession) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-red-50/30">
-        <div className="w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen bg-red-50/30 items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-xl border border-red-100 p-8 sm:p-10 relative overflow-hidden">
-        
-        <div className="absolute top-0 left-0 w-32 h-32 bg-red-50 rounded-full blur-2xl opacity-60 -ml-10 -mt-10"></div>
-
-        <div className="mb-8 text-center relative z-10">
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">Nova Senha</h1>
-          <p className="text-slate-500 text-sm">Crie uma nova senha segura para sua conta.</p>
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-red-100 p-8">
+        <div className="mx-auto w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
+          <Image src="/logo.png" alt="Logo O Bom Amigo" width={56} height={56} className="object-contain" />
         </div>
 
-        {success ? (
-          <div className="text-center relative z-10">
-            <div className="p-6 bg-green-50 rounded-2xl border border-green-100 mb-6">
-              <h3 className="font-bold text-green-800 mb-1">Senha atualizada!</h3>
-              <p className="text-green-700 text-sm">Sua senha foi redefinida com sucesso.</p>
-            </div>
-            <Link href="/login" className="inline-flex items-center justify-center w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-2xl transition-all shadow-md">
-              Ir para o Login
-            </Link>
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-semibold text-slate-900 mb-2">Criar Nova Senha</h1>
+          <p className="text-slate-500 text-sm">Digite sua nova senha abaixo.</p>
+        </div>
+
+        {initializing ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <p className="text-sm text-slate-500">Validando acesso...</p>
+          </div>
+        ) : success ? (
+          <div className="p-6 bg-emerald-50 text-emerald-800 text-sm rounded-2xl border border-emerald-100 text-center space-y-2">
+            <CheckCircle2 className="mx-auto text-emerald-600" size={32} />
+            <p className="text-base font-medium">Senha atualizada com sucesso!</p>
+            <p className="text-xs text-emerald-700">Redirecionando para o login...</p>
           </div>
         ) : (
-          <form onSubmit={handleUpdate} className="space-y-5 relative z-10">
+          <form onSubmit={handleUpdatePassword} className="space-y-4">
             {error && (
-              <div className="p-4 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100 text-center font-medium">
+              <div className="p-4 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100 text-center">
                 {error}
-                <div className="mt-3">
-                  <Link href="/esqueci-senha" className="text-red-700 underline font-bold">Solicitar novo link</Link>
-                </div>
               </div>
             )}
 
-            {!error && (
-              <>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Nova Senha</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                      type="password" required minLength={6}
-                      value={password} onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all text-slate-700 font-medium"
-                      placeholder="Mínimo 6 caracteres"
-                    />
-                  </div>
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Nova Senha</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Mínimo 8 caracteres (letras e nº)"
+                  className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 bg-slate-50 transition-all text-slate-900"
+                  required
+                  minLength={8}
+                />
+              </div>
+            </div>
 
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="w-full mt-4 bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-2xl transition-all shadow-md disabled:opacity-70 flex items-center justify-center gap-2"
-                >
-                  {loading ? 'Salvando...' : 'Salvar nova senha'}
-                </button>
-              </>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirmar Nova Senha</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repita a nova senha"
+                  className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 bg-slate-50 transition-all text-slate-900"
+                  required
+                  minLength={8}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
+            >
+              {loading ? 'Salvando...' : 'Atualizar Minha Senha'}
+            </button>
           </form>
         )}
       </div>
