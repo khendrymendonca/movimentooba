@@ -454,28 +454,9 @@ export default function Dashboard() {
                             {member.blood_type || '-'}
                           </span>
                         </p>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          {userBadges.isFounder && (
-                            <span className="text-[9px] bg-amber-50 text-amber-800 border border-amber-200/60 px-1.5 py-0.2 rounded-md font-medium">
-                              ⭐ Fundador
-                            </span>
-                          )}
-                          {mutiraoCount > 0 && (
-                            <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-200/60 px-1.5 py-0.2 rounded-md font-medium">
-                              🏅 {mutiraoCount} {mutiraoCount === 1 ? 'Mutirão' : 'Mutirões'}
-                            </span>
-                          )}
-                          {userBadges.isSosHero && (
-                            <span className="text-[9px] bg-rose-50 text-rose-800 border border-rose-200/60 px-1.5 py-0.2 rounded-md font-medium">
-                              🩸 SOS
-                            </span>
-                          )}
-                          {!userBadges.isFounder && mutiraoCount === 0 && !userBadges.isSosHero && (
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              Sem medalhas especiais
-                            </span>
-                          )}
-                        </div>
+                        <p className="text-[11px] text-slate-500 font-normal truncate mt-0.5">
+                          {member.email || (member.is_active ? 'Membro Ativo' : 'Membro Inativo')}
+                        </p>
                       </div>
                     </div>
 

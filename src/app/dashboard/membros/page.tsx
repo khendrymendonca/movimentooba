@@ -23,8 +23,6 @@ import Link from 'next/link';
 import QRCode from "react-qr-code";
 import { createClient } from '@/lib/supabase';
 import {
-  calculateBadge,
-  BadgeType,
   checkEligibilityForDate,
   calculateNextDonationDate,
   parseSafeDate,
@@ -285,10 +283,6 @@ export default function Membros() {
                 membro.last_donation_date,
                 new Date()
               );
-              const badge: BadgeType = calculateBadge(
-                membro.sex || 'Outro',
-                membro.donations_this_year || 0
-              );
               const ticket = parseTicket(membro.theme_preference);
 
               return (
@@ -343,11 +337,6 @@ export default function Membros() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {badge !== 'Nenhum' && (
-                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-normal">
-                          {badge}
-                        </span>
-                      )}
                       <button
                         onClick={() => setEditingMembro(membro)}
                         className="text-slate-700 hover:text-slate-900 font-medium inline-flex items-center gap-0.5 text-xs py-1 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
