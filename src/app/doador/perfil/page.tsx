@@ -18,8 +18,10 @@ import {
   Bug,
   Clock,
   ArrowRight,
+  Globe,
 } from 'lucide-react';
 import { sanitizeText, validateSafeUpload } from '@/utils/donationRules';
+import { ImageCropperModal } from '@/components/ImageCropperModal';
 
 export default function PerfilDoador() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -31,6 +33,7 @@ export default function PerfilDoador() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   // Alteração de Senha
   const [newPassword, setNewPassword] = useState('');
@@ -69,28 +72,47 @@ export default function PerfilDoador() {
     router.push('/');
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFeedback(null);
+    const file = e.target.files?.[0];
+    if (!file || !userProfile) return;
+
+    // Permite fotos maiores (até 15MB) para câmeras de celular modernas
+    const validation = validateSafeUpload(file, {
+      maxSizeMB: 15,
+      allowedTypes: ['image'],
+    });
+
+    if (!validation.valid) {
+      setFeedback({ type: 'error', msg: validation.error || 'Arquivo inválido. Escolha uma foto de até 15MB.' });
+      return;
+    }
+
+    // Cria preview para o usuário recortar no enquadramento 3x4
+    const objectUrl = URL.createObjectURL(file);
+    setCropImageSrc(objectUrl);
+    // Limpa o valor do input para permitir selecionar o mesmo arquivo se desejar
+    e.target.value = '';
+  };
+
+  const handleCancelCrop = () => {
+    if (cropImageSrc) {
+      URL.revokeObjectURL(cropImageSrc);
+    }
+    setCropImageSrc(null);
+  };
+
+  const handleConfirmCrop = async (croppedBlob: Blob) => {
+    if (!userProfile) return;
     try {
-      setFeedback(null);
-      const file = e.target.files?.[0];
-      if (!file || !userProfile) return;
-
-      const validation = validateSafeUpload(file, {
-        maxSizeMB: 3,
-        allowedTypes: ['image'],
-      });
-
-      if (!validation.valid) {
-        setFeedback({ type: 'error', msg: validation.error || 'Arquivo inválido.' });
-        return;
-      }
-
       setUploading(true);
-      const filePath = `${userProfile.id}/avatar-${Date.now()}.${validation.safeExtension}`;
+      setFeedback(null);
+
+      const filePath = `${userProfile.id}/avatar-${Date.now()}.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { contentType: file.type, upsert: true });
+        .upload(filePath, croppedBlob, { contentType: 'image/jpeg', upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -105,10 +127,17 @@ export default function PerfilDoador() {
       if (updateError) throw updateError;
 
       setUserProfile({ ...userProfile, avatar_url: urlWithCacheBust });
-      setFeedback({ type: 'success', msg: 'Foto 3x4 atualizada! Ela já está ativa na sua Carteirinha Digital.' });
+      setFeedback({
+        type: 'success',
+        msg: 'Foto 3x4 recortada e salva com sucesso! Já atualizada na sua Carteirinha Digital.',
+      });
     } catch {
-      setFeedback({ type: 'error', msg: 'Não foi possível enviar a foto. Tente outra imagem.' });
+      setFeedback({ type: 'error', msg: 'Não foi possível enviar a foto recortada. Tente novamente.' });
     } finally {
+      if (cropImageSrc) {
+        URL.revokeObjectURL(cropImageSrc);
+      }
+      setCropImageSrc(null);
       setUploading(false);
     }
   };
@@ -269,7 +298,7 @@ export default function PerfilDoador() {
               {userProfile.name || 'Doador'}
             </h2>
             <p className="text-xs text-slate-500 font-normal mt-0.5 leading-relaxed">
-              Toque na foto ao lado para enviar ou atualizar sua foto 3x4 da Carteirinha Digital.
+              Toque na foto para enviar ou recortar (proporção 3x4 oficial). Aceita fotos nítidas de até 15MB.
             </p>
             {uploading && (
               <span className="inline-block mt-1.5 text-[11px] text-red-600 font-normal">
@@ -482,6 +511,15 @@ export default function PerfilDoador() {
           </Link>
         </div>
 
+        {/* Voltar para o Site Oficial */}
+        <Link
+          href="/"
+          className="w-full py-3 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 rounded-2xl font-medium text-xs transition-colors flex items-center justify-center gap-2"
+        >
+          <Globe size={16} className="text-slate-500" />
+          <span>Voltar para o Site Oficial</span>
+        </Link>
+
         {/* Botão de Sair */}
         <button
           onClick={handleLogout}
@@ -491,6 +529,16 @@ export default function PerfilDoador() {
           Encerrar Sessão
         </button>
       </div>
+
+      {/* Modal Interativo de Recorte 3x4 */}
+      {cropImageSrc && (
+        <ImageCropperModal
+          imageSrc={cropImageSrc}
+          onCropComplete={handleConfirmCrop}
+          onCancel={handleCancelCrop}
+          aspectRatio={3 / 4}
+        />
+      )}
     </div>
   );
 }

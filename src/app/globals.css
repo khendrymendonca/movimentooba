@@ -24,6 +24,11 @@
   --radius: 1rem; /* Bordas mais arredondadas transmitem acolhimento */
 }
 
+:root, html {
+  color-scheme: light only;
+  background-color: #ffffff;
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -31,6 +36,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    color-scheme: light only;
   }
 }
 

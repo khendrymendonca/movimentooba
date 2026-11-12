@@ -22,7 +22,7 @@ import {
   parseSafeDate,
   validateNewDonation,
 } from '@/utils/donationRules';
-import { fetchGroupCampaigns } from '@/lib/campaigns';
+import { fetchGroupCampaigns, syncGlobalDonationsCount } from '@/lib/campaigns';
 
 export default function DoacoesDoador() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -140,6 +140,7 @@ export default function DoacoesDoador() {
         type: 'success',
         msg: 'Doação registrada com sucesso! Seu ciclo e próximas datas foram atualizados.',
       });
+      syncGlobalDonationsCount(supabase);
       await loadData();
     }
     setRegistering(false);
@@ -151,6 +152,7 @@ export default function DoacoesDoador() {
     if (!error) {
       const remaining = history.filter((d) => d.id !== id);
       await syncProfileDates(remaining, userProfile);
+      syncGlobalDonationsCount(supabase);
       await loadData();
     }
   };

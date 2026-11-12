@@ -14,6 +14,7 @@ import {
   Heart,
   Share2,
   LifeBuoy,
+  Globe,
 } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
@@ -209,6 +210,17 @@ export default function DoadorHome() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Voltar para o Site Oficial */}
+          <Link
+            href="/"
+            title="Voltar para o Site Institucional"
+            aria-label="Voltar para o Site"
+            className="px-2.5 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 text-xs font-medium"
+          >
+            <Globe size={16} className="text-slate-500" />
+            <span className="hidden sm:inline">Site</span>
+          </Link>
+
           {/* Central de Apoio & Chamados */}
           <Link
             href="/doador/apoio"

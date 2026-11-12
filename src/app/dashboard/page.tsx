@@ -43,6 +43,7 @@ import {
   toggleUserSpecialBadge,
   toggleUserMutiraoBadge,
   UserSpecialBadges,
+  syncGlobalDonationsCount,
 } from '@/lib/campaigns';
 import {
   GroupCampaign,
@@ -117,6 +118,7 @@ export default function Dashboard() {
       loadedConfig,
       membersRes,
       badgesStoreRes,
+      donationsTotalRes,
     ] = await Promise.all([
       supabase
         .from('profiles')
@@ -136,7 +138,12 @@ export default function Dashboard() {
         .select('*, cards(status)')
         .order('name', { ascending: true }),
       fetchSpecialBadgesStore(supabase),
+      supabase.from('donations').select('*', { count: 'exact', head: true }),
     ]);
+
+    if (typeof donationsTotalRes.count === 'number') {
+      syncGlobalDonationsCount(supabase, donationsTotalRes.count);
+    }
 
     setCampaigns(loadedCampaigns);
     setSupportCampaigns(loadedSupport);

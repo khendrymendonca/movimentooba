@@ -7,6 +7,7 @@ const instrumentSans = Instrument_Sans({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
   themeColor: "#ffffff",
+  colorScheme: "light",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

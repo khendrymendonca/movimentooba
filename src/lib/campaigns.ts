@@ -932,3 +932,105 @@ export async function grantBatchMutiraoBadges(
     return { error: error ? error.message : null };
   }
 }
+
+const STATS_KEY = '[STATS_DOACOES]';
+
+export interface DonationStats {
+  totalDonations: number;
+  totalMl: number;
+  totalLiters: number;
+  totalLives: number;
+  startDate: string;
+}
+
+/**
+ * Retorna as estatísticas públicas acumuladas de sangue doado desde 12/09/2026.
+ * Cada doação registrada soma 450 ml de sangue doado.
+ */
+export async function fetchPublicDonationStats(supabase: SupabaseClient): Promise<DonationStats> {
+  let count = 0;
+
+  // 1. Tenta consulta direta em donations
+  try {
+    const { count: directCount, error } = await supabase
+      .from('donations')
+      .select('id', { count: 'exact', head: true });
+    if (!error && typeof directCount === 'number' && directCount > 0) {
+      count = directCount;
+    }
+  } catch {}
+
+  // 2. Fallback via store público em donation_guides
+  if (count === 0) {
+    try {
+      const { data } = await supabase
+        .from('donation_guides')
+        .select('content')
+        .eq('title', STATS_KEY)
+        .maybeSingle();
+
+      if (data?.content) {
+        const parsed = JSON.parse(data.content);
+        if (typeof parsed?.totalDonations === 'number') {
+          count = Math.max(count, parsed.totalDonations);
+        }
+      }
+    } catch {}
+  }
+
+  const totalMl = count * 450;
+  const totalLiters = totalMl / 1000;
+  const totalLives = count * 4;
+
+  return {
+    totalDonations: count,
+    totalMl,
+    totalLiters,
+    totalLives,
+    startDate: '12/09/2026',
+  };
+}
+
+/**
+ * Atualiza o store público com a contagem total de doações acumuladas
+ */
+export async function syncGlobalDonationsCount(
+  supabase: SupabaseClient,
+  knownTotal?: number
+): Promise<void> {
+  try {
+    let finalCount = knownTotal;
+    if (finalCount === undefined) {
+      const { count } = await supabase
+        .from('donations')
+        .select('id', { count: 'exact', head: true });
+      if (typeof count === 'number') {
+        finalCount = count;
+      }
+    }
+
+    if (typeof finalCount !== 'number') return;
+
+    const payload = JSON.stringify({
+      totalDonations: finalCount,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { data: existing } = await supabase
+      .from('donation_guides')
+      .select('id')
+      .eq('title', STATS_KEY)
+      .maybeSingle();
+
+    if (existing?.id) {
+      await supabase
+        .from('donation_guides')
+        .update({ content: payload })
+        .eq('id', existing.id);
+    } else {
+      await supabase
+        .from('donation_guides')
+        .insert([{ title: STATS_KEY, content: payload }]);
+    }
+  } catch {}
+}

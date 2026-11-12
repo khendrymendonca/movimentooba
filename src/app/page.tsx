@@ -14,8 +14,9 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { fetchGroupCampaigns } from '@/lib/campaigns';
+import { fetchGroupCampaigns, fetchPublicDonationStats, DonationStats } from '@/lib/campaigns';
 import { GroupCampaign, parseSafeDate } from '@/utils/donationRules';
+import { Droplet, Sparkles, Award } from 'lucide-react';
 
 const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbE55L14yltHPKvKYE1z';
 
@@ -26,6 +27,13 @@ export default function LandingPage() {
   const [isMobileView, setIsMobileView] = useState(false);
   const [campaigns, setCampaigns] = useState<GroupCampaign[]>([]);
   const [hasSession, setHasSession] = useState(false);
+  const [donationStats, setDonationStats] = useState<DonationStats>({
+    totalDonations: 0,
+    totalMl: 0,
+    totalLiters: 0,
+    totalLives: 0,
+    startDate: '12/09/2026',
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -54,9 +62,10 @@ export default function LandingPage() {
 
   useEffect(() => {
     async function loadPublicData() {
-      const [loadedCampaigns, sessionRes] = await Promise.all([
+      const [loadedCampaigns, sessionRes, statsRes] = await Promise.all([
         fetchGroupCampaigns(supabase),
         supabase.auth.getSession(),
+        fetchPublicDonationStats(supabase),
       ]);
 
       const today = new Date();
@@ -68,6 +77,7 @@ export default function LandingPage() {
 
       setCampaigns(upcoming);
       setHasSession(!!sessionRes.data.session);
+      if (statsRes) setDonationStats(statsRes);
     }
     loadPublicData();
   }, [supabase]);
@@ -156,13 +166,99 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="relative lg:h-[460px] flex items-center justify-center">
-              <div className="relative w-full max-w-md aspect-square rounded-[2.5rem] overflow-hidden bg-slate-100 shadow-xl border border-slate-200/50 flex flex-col items-center justify-center">
-                <div className="absolute inset-0 bg-red-50/40"></div>
-                <Image src="/logo.png" alt="O Bom Amigo" width={120} height={120} className="opacity-20 z-10" />
-                <span className="relative z-10 mt-4 font-medium text-slate-400 tracking-widest uppercase text-xs">
-                  [ Espaço para Imagem ]
-                </span>
+            {/* Card de Impacto: Sangue Doado Acumulado (450 ml por doação) */}
+            <div className="relative flex items-center justify-center">
+              <div className="w-full max-w-md bg-gradient-to-br from-white via-rose-50/30 to-red-50/60 rounded-[2.5rem] p-7 sm:p-9 shadow-xl border border-red-100/80 relative overflow-hidden flex flex-col justify-between">
+                {/* Elemento Decorativo Sutil de Fundo */}
+                <div className="absolute -top-12 -right-12 w-44 h-44 bg-red-100/40 rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -bottom-12 -left-12 w-44 h-44 bg-rose-200/30 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="relative z-10">
+                  {/* Tag Superior */}
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100/80 border border-red-200/60 text-red-700 text-xs font-semibold">
+                    <Droplet size={14} className="fill-red-600 text-red-600" />
+                    <span>Impacto Coletivo</span>
+                  </div>
+
+                  {/* Volume Principal */}
+                  <div className="my-6">
+                    <span className="text-xs uppercase font-bold tracking-widest text-slate-400 block mb-1">
+                      Total de Sangue Doado
+                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight">
+                        {donationStats.totalLiters >= 1
+                          ? donationStats.totalLiters.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 1,
+                              maximumFractionDigits: 1,
+                            })
+                          : donationStats.totalMl.toLocaleString('pt-BR')}
+                      </span>
+                      <span className="text-2xl sm:text-3xl font-extrabold text-red-600">
+                        {donationStats.totalLiters >= 1 ? 'Litros' : 'ml'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-slate-500 font-normal mt-1.5 leading-relaxed">
+                      {donationStats.totalDonations > 0 ? (
+                        <span>
+                          Equivalente a{' '}
+                          <strong className="text-slate-700 font-semibold">
+                            {donationStats.totalMl.toLocaleString('pt-BR')} ml
+                          </strong>{' '}
+                          de esperança compartilhada
+                        </span>
+                      ) : (
+                        <span>Cada registro de doação adiciona 450 ml ao nosso contador coletivo!</span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Marco Oficial Exigido pelo Movimento */}
+                  <div className="bg-white/80 backdrop-blur-xs rounded-2xl p-3 border border-red-100/70 mb-5 text-center">
+                    <span className="text-[11px] font-semibold text-slate-600">
+                      Cumulativo desde o início do projeto em{' '}
+                      <span className="text-red-600 font-bold">12/09/2026</span>
+                    </span>
+                  </div>
+
+                  {/* Três Métricas em Grade */}
+                  <div className="grid grid-cols-3 gap-2.5 text-center">
+                    <div className="bg-white/90 p-3 rounded-2xl border border-slate-100 shadow-xs">
+                      <span className="text-base sm:text-lg font-bold text-slate-900 block leading-tight">
+                        450 ml
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">por doação</span>
+                    </div>
+
+                    <div className="bg-white/90 p-3 rounded-2xl border border-slate-100 shadow-xs">
+                      <span className="text-base sm:text-lg font-bold text-slate-900 block leading-tight">
+                        {donationStats.totalDonations}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {donationStats.totalDonations === 1 ? 'doação' : 'doações'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-3 rounded-2xl border border-slate-100 shadow-xs">
+                      <span className="text-base sm:text-lg font-bold text-emerald-600 block leading-tight">
+                        {donationStats.totalLives}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">vidas salvas</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chamada para ação sutil */}
+                <div className="mt-6 pt-4 border-t border-red-100/60 relative z-10">
+                  <Link
+                    href="/cadastro"
+                    className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-red-600/20"
+                  >
+                    <Heart size={14} className="fill-white" />
+                    Quero Doar e Somar
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -356,57 +452,43 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Quem Sou Eu & A Iniciativa */}
+        {/* A Iniciativa */}
         <section className="py-24 bg-white">
-          <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-16 items-center">
-            <div className="relative aspect-square md:aspect-[4/5] rounded-[2.5rem] bg-slate-100 overflow-hidden shadow-lg border border-slate-200/50">
-              <div className="absolute inset-0 flex items-center justify-center text-slate-300 flex-col gap-4 bg-slate-50">
-                <Image src="/logo.png" alt="Logo" width={100} height={100} className="opacity-20" />
-                <span className="font-medium text-xs tracking-widest uppercase">
-                  [ Espaço para Foto do Idealizador ]
-                </span>
-              </div>
+          <div className="max-w-3xl mx-auto px-6 text-center">
+            <span className="text-xs uppercase tracking-widest text-red-500 font-semibold">
+              Movimento Solidário
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-semibold text-slate-900 mt-1 mb-8">
+              A Iniciativa
+            </h2>
+
+            <div className="space-y-5 text-base sm:text-lg text-slate-600 leading-relaxed text-left sm:text-center">
+              <p>
+                A ideia é juntar um grupo de pessoas movidas pela vontade de fazer a diferença e que entendem que 5 minutos de doação podem garantir 50 anos a alguém.
+              </p>
+              <p>
+                Doar sangue é mais do que ajudar, é garantir que uma família tenha a sensação de ver um ente querido e amado sair de uma situação de necessidade e vulnerabilidade.
+              </p>
+              <p className="font-medium text-slate-800">
+                Doar sangue é garantir que alguém consiga continuar construindo a sua história.
+              </p>
             </div>
 
-            <div className="flex flex-col gap-8">
+            <div className="mt-10 bg-amber-50/70 p-6 sm:p-7 rounded-3xl border border-amber-100 flex flex-col sm:flex-row gap-4 text-left items-start">
+              <Info className="text-amber-600 flex-shrink-0 mt-0.5" size={24} />
               <div>
-                <h2 className="text-3xl sm:text-4xl font-semibold text-slate-900 mb-6">A Iniciativa</h2>
-                <div className="space-y-4 text-base sm:text-lg text-slate-600 leading-relaxed">
-                  <p>
-                    A ideia é juntar um grupo de pessoas movidas pela vontade de fazer a diferença e que entendem que 5 minutos de doação podem garantir 50 anos a alguém.
-                  </p>
-                  <p>
-                    Doar sangue é mais do que ajudar, é garantir que uma família tenha a sensação de ver um ente querido e amado sair de uma situação de necessidade e vulnerabilidade.
-                  </p>
-                  <p>
-                    Doar sangue é garantir que alguém consiga continuar construindo a sua história.
-                  </p>
-                </div>
-
-                <div className="mt-8 bg-amber-50/70 p-6 rounded-2xl border border-amber-100 flex gap-4">
-                  <Info className="text-amber-600 flex-shrink-0 mt-0.5" size={22} />
-                  <div>
-                    <h4 className="font-medium text-slate-900 mb-1">Aviso Importante</h4>
-                    <p className="text-slate-600 text-sm leading-relaxed">
-                      Este portal é um movimento independente criado apenas para reunir pessoas com a vontade de fazer a diferença. Para informações oficiais, requisitos e agendamentos, acesse sempre o site oficial do{' '}
-                      <a
-                        href="https://www.hemominas.mg.gov.br/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-amber-700 font-medium hover:underline"
-                      >
-                        Hemominas
-                      </a>
-                      .
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-red-50/60 p-8 rounded-3xl border border-red-100/80">
-                <h3 className="text-xl font-semibold text-slate-900 mb-2">Quem sou eu?</h3>
+                <h4 className="font-semibold text-slate-900 mb-1">Aviso Importante</h4>
                 <p className="text-slate-600 text-sm leading-relaxed">
-                  [ Espaço para colocar informações sobre você, Khendry, e sua motivação pessoal para criar o projeto depois. ]
+                  Este portal é um movimento independente criado apenas para reunir pessoas com a vontade de fazer a diferença. Para informações oficiais, requisitos e agendamentos, acesse sempre o site oficial do{' '}
+                  <a
+                    href="https://www.hemominas.mg.gov.br/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-amber-700 font-semibold hover:underline"
+                  >
+                    Hemominas
+                  </a>
+                  .
                 </p>
               </div>
             </div>
