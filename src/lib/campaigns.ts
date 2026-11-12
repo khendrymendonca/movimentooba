@@ -47,22 +47,6 @@ export async function fetchGroupCampaigns(
 
     if (error || !data) return [];
 
-    // Caso o usuário esteja logado, lê também confirmações salvas na pasta do usuário no bucket avatars (fallback RLS)
-    let myConfirmedIds = new Set<string>();
-    if (currentUserId) {
-      const { data: userFiles } = await supabase.storage
-        .from('avatars')
-        .list(currentUserId, { search: 'rsvp_' });
-      if (userFiles) {
-        for (const f of userFiles) {
-          if (f.name.startsWith('rsvp_') && f.name.endsWith('.png')) {
-            const cId = f.name.replace('rsvp_', '').replace('.png', '');
-            myConfirmedIds.add(cId);
-          }
-        }
-      }
-    }
-
     const campaigns: GroupCampaign[] = [];
     for (const row of data) {
       try {
@@ -74,19 +58,7 @@ export async function fetchGroupCampaigns(
             ? parsed.confirmed_users
             : [];
 
-          const mergedMap = new Map<string, { id: string; name: string; confirmedAt: string }>();
-          for (const u of jsonRsvps) {
-            if (u && u.id) mergedMap.set(u.id, u);
-          }
-          if (currentUserId && myConfirmedIds.has(row.id) && !mergedMap.has(currentUserId)) {
-            mergedMap.set(currentUserId, {
-              id: currentUserId,
-              name: 'Você',
-              confirmedAt: new Date().toISOString(),
-            });
-          }
-
-          const allConfirmed = Array.from(mergedMap.values());
+          const allConfirmed = jsonRsvps.filter((u) => u && Boolean(u.id));
           const maxParticipants = parsed.max_participants || MAX_CAMPAIGN_PARTICIPANTS;
 
           campaigns.push({
@@ -125,10 +97,13 @@ export async function toggleCampaignConfirmation(
   currentlyConfirmed: boolean
 ): Promise<{ ok: boolean; error?: string; full?: boolean }> {
   try {
-    // 1. Tenta via RPC atômica no banco (se a função toggle_campaign_rsvp estiver instalada)
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('toggle_campaign_rsvp', {
+    const shouldConfirm = !currentlyConfirmed;
+
+    // 1. Tenta a função atômica e idempotente set_campaign_rsvp instalada no Supabase
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('set_campaign_rsvp', {
       p_campaign_id: campaignId,
       p_user_name: sanitizeText(user.name || 'Doador', 80),
+      p_confirm: shouldConfirm,
     });
 
     if (!rpcErr && rpcRes) {
@@ -142,73 +117,45 @@ export async function toggleCampaignConfirmation(
         };
       }
       if (rpcRes.ok) {
+        // Limpa arquivo residual do fallback caso existisse
+        const userFolderFile = `${user.id}/rsvp_${campaignId}.png`;
+        try {
+          await supabase.storage.from('avatars').remove([userFolderFile]);
+        } catch {}
+        return { ok: true };
+      }
+      if (rpcRes.error) {
+        return { ok: false, error: rpcRes.error };
+      }
+    }
+
+    // 2. Fallback via toggle_campaign_rsvp (caso a versão anterior ainda responda)
+    const { data: fallbackRpc, error: fallbackErr } = await supabase.rpc('toggle_campaign_rsvp', {
+      p_campaign_id: campaignId,
+      p_user_name: sanitizeText(user.name || 'Doador', 80),
+    });
+
+    if (!fallbackErr && fallbackRpc) {
+      if (fallbackRpc.full) {
+        return {
+          ok: false,
+          full: true,
+          error:
+            fallbackRpc.error ||
+            'O mutirão já atingiu as 20 confirmações! Para doar nesta data, será necessário agendar individualmente pelo site oficial.',
+        };
+      }
+      if (fallbackRpc.ok) {
         return { ok: true };
       }
     }
 
-    // 2. Fallback direto no documento do mutirão + pasta do usuário no Storage
-    const { data: row, error: fetchErr } = await supabase
-      .from('donation_guides')
-      .select('*')
-      .eq('id', campaignId)
-      .maybeSingle();
-
-    if (fetchErr || !row) {
-      return { ok: false, error: 'Mutirão não encontrado.' };
-    }
-
-    const parsed = JSON.parse(row.content);
-    const maxLimit = parsed.max_participants || MAX_CAMPAIGN_PARTICIPANTS;
-    const existingList: { id: string; name: string; confirmedAt: string }[] = Array.isArray(
-      parsed.confirmed_users
-    )
-      ? parsed.confirmed_users
-      : [];
-
-    const userFolderFile = `${user.id}/rsvp_${campaignId}.png`;
-
-    if (currentlyConfirmed) {
-      const updatedList = existingList.filter((u) => u.id !== user.id);
-      await supabase
-        .from('donation_guides')
-        .update({ content: JSON.stringify({ ...parsed, confirmed_users: updatedList }) })
-        .eq('id', campaignId);
-
-      await supabase.storage.from('avatars').remove([userFolderFile]);
-      return { ok: true };
-    } else {
-      if (existingList.length >= maxLimit) {
-        return {
-          ok: false,
-          full: true,
-          error: `Este mutirão já atingiu o limite de ${maxLimit} participantes confirmados. Para doar nesta data, é necessário realizar o agendamento pelo site.`,
-        };
-      }
-
-      const entry = {
-        id: user.id,
-        name: sanitizeText(user.name || 'Doador', 80),
-        confirmedAt: new Date().toISOString(),
-      };
-      const updatedList = [
-        ...existingList.filter((u) => u.id !== user.id),
-        entry,
-      ];
-
-      await supabase
-        .from('donation_guides')
-        .update({ content: JSON.stringify({ ...parsed, confirmed_users: updatedList }) })
-        .eq('id', campaignId);
-
-      const blob = new Blob([JSON.stringify(entry)], { type: 'image/png' });
-      await supabase.storage
-        .from('avatars')
-        .upload(userFolderFile, blob, { contentType: 'image/png', upsert: true });
-
-      return { ok: true };
-    }
+    return {
+      ok: false,
+      error: rpcErr?.message || fallbackErr?.message || 'Não foi possível atualizar a confirmação. Tente novamente.',
+    };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Não foi possível registrar confirmação.' };
+    return { ok: false, error: e?.message || 'Erro de comunicação ao confirmar presença.' };
   }
 }
 

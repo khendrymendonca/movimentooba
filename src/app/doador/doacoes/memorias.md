@@ -29,3 +29,4 @@
 |---|---|---|---|
 | 11/11/2026 | Inicialização | Criação do arquivo de memórias dedicado da tela | Antigravity |
 | 12/11/2026 | Regra & Limite Anual | Implementação da função `validateNewDonation` com trava estrita: impede registro de doações fora do intervalo mínimo (60d/120d) e bloqueia extrapolação do limite de doações na janela deslizante de 12 meses (4 doações p/ homens, 3 p/ mulheres). O ciclo de 12 meses conta individualmente a partir de cada doação. Exibição de aviso imediato em tempo real no formulário. | Antigravity |
+| 12/11/2026 | Correção RLS / Banco de Dados | Correção da política de segurança RLS na tabela `public.donations`: a trava anterior permitia insert apenas para ADMs (`is_admin()`), causando erro 42501 para doadores comuns. A nova policy concede permissão para `(profile_id = auth.uid() OR is_admin())`, restabelecendo o registro autônomo de doações para todos os usuários. | Antigravity |
