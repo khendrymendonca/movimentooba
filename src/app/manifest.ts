@@ -1,0 +1,41 @@
+import type { MetadataRoute } from 'next';
+
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: 'Movimento O Bom Amigo',
+    short_name: 'O Bom Amigo',
+    description: 'Aplicativo oficial do Movimento O Bom Amigo para gestão de doadores e incentivo à doação de sangue.',
+    start_url: '/doador',
+    id: '/doador',
+    display: 'standalone',
+    orientation: 'portrait',
+    background_color: '#f8f9fa',
+    theme_color: '#dc2626',
+    icons: [
+      {
+        src: '/icons/icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: '/icons/icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+      {
+        src: '/icons/icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: '/icons/icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+    ],
+  };
+}
