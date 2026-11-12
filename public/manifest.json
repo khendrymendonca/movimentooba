@@ -3,11 +3,13 @@
   "short_name": "O Bom Amigo",
   "description": "Aplicativo oficial do Movimento O Bom Amigo para gestão de doadores e incentivo à doação de sangue.",
   "start_url": "/doador",
-  "id": "/doador",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f8f9fa",
-  "theme_color": "#dc2626",
+  "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/icons/icon-192.png",

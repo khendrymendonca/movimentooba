@@ -1,14 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Sans } from "next/font/google";
 import "./globals.css";
+import { PwaRegister } from "@/components/PwaRegister";
 
 const instrumentSans = Instrument_Sans({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
-  themeColor: "#dc2626",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
@@ -19,6 +22,10 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "default",
     title: "O Bom Amigo",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
   },
   icons: {
     icon: [
@@ -42,6 +49,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${instrumentSans.className} min-h-screen bg-slate-50 text-slate-900 flex flex-col`}>
+        <PwaRegister />
         {children}
       </body>
     </html>
