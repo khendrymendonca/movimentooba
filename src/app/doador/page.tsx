@@ -185,42 +185,31 @@ export default function DoadorHome() {
     <div className="flex flex-col min-h-full">
       {/* Header com Saudação e Sino de Notificações */}
       <div className="px-6 pt-8 pb-5 bg-white/90 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100 flex justify-between items-center">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
           {profile?.avatar_url ? (
             <Image
               src={profile.avatar_url}
               alt="Foto"
               width={48}
               height={48}
-              className="w-12 h-12 rounded-full object-cover border-2 border-red-100 shadow-sm"
+              className="w-12 h-12 rounded-full object-cover border-2 border-red-100 shadow-sm shrink-0"
             />
           ) : (
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-semibold text-lg border-2 border-red-200 shadow-sm">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-semibold text-lg border-2 border-red-200 shadow-sm shrink-0">
               {firstName.charAt(0) || '?'}
             </div>
           )}
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900 tracking-tight leading-tight">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-semibold text-slate-900 tracking-tight leading-tight truncate">
               Olá, {firstName}
             </h1>
-            <p className="text-xs text-slate-500 font-normal">
+            <p className="text-xs text-slate-500 font-normal truncate">
               {profile?.blood_type ? `Tipo ${profile.blood_type}` : 'Doador Voluntário'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Voltar para o Site Oficial */}
-          <Link
-            href="/"
-            title="Voltar para o Site Institucional"
-            aria-label="Voltar para o Site"
-            className="px-2.5 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 text-xs font-medium"
-          >
-            <Globe size={16} className="text-slate-500" />
-            <span className="hidden sm:inline">Site</span>
-          </Link>
-
+        <div className="flex items-center gap-2 shrink-0">
           {/* Central de Apoio & Chamados */}
           <Link
             href="/doador/apoio"
@@ -606,6 +595,17 @@ export default function DoadorHome() {
               ))}
             </div>
           )}
+
+          {/* Atalho para o Site Institucional */}
+          <div className="pt-6 pb-2 text-center">
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 text-xs font-normal border border-slate-200/80 transition-colors"
+            >
+              <Globe size={14} className="text-slate-500" />
+              <span>Acessar o Site Oficial do Movimento</span>
+            </Link>
+          </div>
         </div>
       </div>
 
