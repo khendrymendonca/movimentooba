@@ -16,7 +16,6 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { fetchGroupCampaigns, fetchPublicDonationStats, DonationStats } from '@/lib/campaigns';
 import { GroupCampaign, parseSafeDate } from '@/utils/donationRules';
-import { Droplet, Sparkles, Award } from 'lucide-react';
 
 const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbE55L14yltHPKvKYE1z';
 
@@ -166,99 +165,31 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Card de Impacto: Sangue Doado Acumulado (450 ml por doação) */}
+            {/* Total de Sangue Doado */}
             <div className="relative flex items-center justify-center">
-              <div className="w-full max-w-md bg-gradient-to-br from-white via-rose-50/30 to-red-50/60 rounded-[2.5rem] p-7 sm:p-9 shadow-xl border border-red-100/80 relative overflow-hidden flex flex-col justify-between">
-                {/* Elemento Decorativo Sutil de Fundo */}
-                <div className="absolute -top-12 -right-12 w-44 h-44 bg-red-100/40 rounded-full blur-2xl pointer-events-none" />
-                <div className="absolute -bottom-12 -left-12 w-44 h-44 bg-rose-200/30 rounded-full blur-2xl pointer-events-none" />
+              <div className="w-full max-w-md bg-white rounded-[2.5rem] p-8 sm:p-10 shadow-lg border border-slate-100 flex flex-col items-center justify-center text-center">
+                <span className="text-xs uppercase font-semibold tracking-widest text-slate-400 mb-2">
+                  Total de Sangue Doado
+                </span>
 
-                <div className="relative z-10">
-                  {/* Tag Superior */}
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100/80 border border-red-200/60 text-red-700 text-xs font-semibold">
-                    <Droplet size={14} className="fill-red-600 text-red-600" />
-                    <span>Impacto Coletivo</span>
-                  </div>
-
-                  {/* Volume Principal */}
-                  <div className="my-6">
-                    <span className="text-xs uppercase font-bold tracking-widest text-slate-400 block mb-1">
-                      Total de Sangue Doado
-                    </span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight">
-                        {donationStats.totalLiters >= 1
-                          ? donationStats.totalLiters.toLocaleString('pt-BR', {
-                              minimumFractionDigits: 1,
-                              maximumFractionDigits: 1,
-                            })
-                          : donationStats.totalMl.toLocaleString('pt-BR')}
-                      </span>
-                      <span className="text-2xl sm:text-3xl font-extrabold text-red-600">
-                        {donationStats.totalLiters >= 1 ? 'Litros' : 'ml'}
-                      </span>
-                    </div>
-
-                    <p className="text-xs sm:text-sm text-slate-500 font-normal mt-1.5 leading-relaxed">
-                      {donationStats.totalDonations > 0 ? (
-                        <span>
-                          Equivalente a{' '}
-                          <strong className="text-slate-700 font-semibold">
-                            {donationStats.totalMl.toLocaleString('pt-BR')} ml
-                          </strong>{' '}
-                          de esperança compartilhada
-                        </span>
-                      ) : (
-                        <span>Cada registro de doação adiciona 450 ml ao nosso contador coletivo!</span>
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Marco Oficial Exigido pelo Movimento */}
-                  <div className="bg-white/80 backdrop-blur-xs rounded-2xl p-3 border border-red-100/70 mb-5 text-center">
-                    <span className="text-[11px] font-semibold text-slate-600">
-                      Cumulativo desde o início do projeto em{' '}
-                      <span className="text-red-600 font-bold">12/09/2026</span>
-                    </span>
-                  </div>
-
-                  {/* Três Métricas em Grade */}
-                  <div className="grid grid-cols-3 gap-2.5 text-center">
-                    <div className="bg-white/90 p-3 rounded-2xl border border-slate-100 shadow-xs">
-                      <span className="text-base sm:text-lg font-bold text-slate-900 block leading-tight">
-                        450 ml
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium">por doação</span>
-                    </div>
-
-                    <div className="bg-white/90 p-3 rounded-2xl border border-slate-100 shadow-xs">
-                      <span className="text-base sm:text-lg font-bold text-slate-900 block leading-tight">
-                        {donationStats.totalDonations}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium">
-                        {donationStats.totalDonations === 1 ? 'doação' : 'doações'}
-                      </span>
-                    </div>
-
-                    <div className="bg-white/90 p-3 rounded-2xl border border-slate-100 shadow-xs">
-                      <span className="text-base sm:text-lg font-bold text-emerald-600 block leading-tight">
-                        {donationStats.totalLives}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium">vidas salvas</span>
-                    </div>
-                  </div>
+                <div className="flex items-baseline gap-2 my-2">
+                  <span className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tight">
+                    {donationStats.totalLiters >= 1
+                      ? donationStats.totalLiters.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        })
+                      : donationStats.totalMl.toLocaleString('pt-BR')}
+                  </span>
+                  <span className="text-2xl sm:text-3xl font-extrabold text-red-600">
+                    {donationStats.totalLiters >= 1 ? 'Litros' : 'ml'}
+                  </span>
                 </div>
 
-                {/* Chamada para ação sutil */}
-                <div className="mt-6 pt-4 border-t border-red-100/60 relative z-10">
-                  <Link
-                    href="/cadastro"
-                    className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-red-600/20"
-                  >
-                    <Heart size={14} className="fill-white" />
-                    Quero Doar e Somar
-                  </Link>
-                </div>
+                <p className="text-xs text-slate-400 font-normal mt-3">
+                  Cumulativo desde o início do projeto em{' '}
+                  <span className="text-slate-600 font-medium">12/09/2026</span>
+                </p>
               </div>
             </div>
           </div>
