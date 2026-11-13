@@ -58,7 +58,13 @@ export async function fetchGroupCampaigns(
             ? parsed.confirmed_users
             : [];
 
-          const allConfirmed = jsonRsvps.filter((u) => u && Boolean(u.id));
+          const allConfirmed = jsonRsvps.filter(
+            (u) =>
+              u &&
+              Boolean(u.id) &&
+              !u.name?.toLowerCase().includes('diagnostico') &&
+              !u.name?.toLowerCase().includes('diagnóstico')
+          );
           const maxParticipants = parsed.max_participants || MAX_CAMPAIGN_PARTICIPANTS;
 
           campaigns.push({
@@ -198,6 +204,47 @@ export async function deleteGroupCampaign(
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.from('donation_guides').delete().eq('id', id);
   return { error: error ? error.message : null };
+}
+
+/**
+ * Remove um participante da confirmação de presença no mutirão — Exclusivo para ADMs.
+ */
+export async function adminRemoveCampaignParticipant(
+  supabase: SupabaseClient,
+  campaignId: string,
+  participantId: string
+): Promise<{ error: string | null }> {
+  try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('donation_guides')
+      .select('*')
+      .eq('id', campaignId)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      return { error: 'Mutirão não encontrado.' };
+    }
+
+    const currentContent = JSON.parse(existing.content || '{}');
+    const existingList: any[] = Array.isArray(currentContent.confirmed_users)
+      ? currentContent.confirmed_users
+      : [];
+    const updatedList = existingList.filter((u: any) => u.id !== participantId);
+
+    const { error: updateErr } = await supabase
+      .from('donation_guides')
+      .update({
+        content: JSON.stringify({
+          ...currentContent,
+          confirmed_users: updatedList,
+        }),
+      })
+      .eq('id', campaignId);
+
+    return { error: updateErr ? updateErr.message : null };
+  } catch (e: any) {
+    return { error: e?.message || 'Erro ao remover participante.' };
+  }
 }
 
 /**

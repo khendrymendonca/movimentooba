@@ -30,6 +30,7 @@ import {
   createGroupCampaign,
   updateGroupCampaign,
   deleteGroupCampaign,
+  adminRemoveCampaignParticipant,
   fetchSupportCampaigns,
   createSupportCampaign,
   updateSupportCampaign,
@@ -220,6 +221,16 @@ export default function Dashboard() {
   const handleRemoveCampaign = async (id: string) => {
     if (!confirm('Deseja remover esta data de doação em massa?')) return;
     await deleteGroupCampaign(supabase, id);
+    await loadDashboardData();
+  };
+
+  const handleRemoveParticipant = async (campaignId: string, participantId: string, participantName: string) => {
+    if (!confirm(`Deseja remover ${participantName} deste mutirão?`)) return;
+    const { error } = await adminRemoveCampaignParticipant(supabase, campaignId, participantId);
+    if (error) {
+      alert(`Não foi possível remover: ${error}`);
+      return;
+    }
     await loadDashboardData();
   };
 
@@ -811,9 +822,17 @@ export default function Dashboard() {
                         {camp.confirmed_users.map((u, idx) => (
                           <span
                             key={u.id || idx}
-                            className="text-[10px] bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-normal"
+                            className="text-[10px] bg-white border border-slate-200 text-slate-700 pl-2 pr-1 py-0.5 rounded-full font-normal inline-flex items-center gap-1"
                           >
-                            {idx + 1}. {u.name}
+                            <span>{idx + 1}. {u.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveParticipant(camp.id, u.id, u.name)}
+                              className="text-slate-400 hover:text-red-600 transition-colors p-0.5 rounded-full hover:bg-slate-100"
+                              title={`Remover confirmação de ${u.name}`}
+                            >
+                              <X size={11} />
+                            </button>
                           </span>
                         ))}
                       </div>
