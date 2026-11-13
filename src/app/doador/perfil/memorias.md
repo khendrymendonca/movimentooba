@@ -34,3 +34,4 @@
 |---|---|---|---|
 | 11/11/2026 | Inicialização | Criação do arquivo de memórias dedicado da tela | Antigravity |
 | 11/11/2026 | UI, Segurança & Suporte | Unificação total do Meu Perfil (sem "Coordenação"), adição de alteração de E-mail e Senha, seletor de Tipo Sanguíneo/Sexo e envio persistente de Solicitações/Bugs para o painel de membros. | Antigravity |
+| 13/11/2026 | Upload e Ajuste Livre de Fotos | Redesenho completo do componente `ImageCropperModal`: eliminação do zoom excessivo em fotos de alta resolução (ancoragem proporcional com escala `contain`), controle de zoom ampliado de 0.5x a 3.5x com suporte a pinch-to-zoom no celular, seletor de proporção livre pelo usuário (Original/Livre, 1:1 Quadrado e 3:4 Carteirinha), remoção de máscara artificial de rosto e adição de botão direto "Usar Foto Inteira" sem corte forçado. | Antigravity |

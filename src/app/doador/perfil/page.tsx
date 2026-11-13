@@ -129,7 +129,7 @@ export default function PerfilDoador() {
       setUserProfile({ ...userProfile, avatar_url: urlWithCacheBust });
       setFeedback({
         type: 'success',
-        msg: 'Foto 3x4 recortada e salva com sucesso! Já atualizada na sua Carteirinha Digital.',
+        msg: 'Foto de perfil atualizada com sucesso! Já disponível na sua Carteirinha Digital.',
       });
     } catch {
       setFeedback({ type: 'error', msg: 'Não foi possível enviar a foto recortada. Tente novamente.' });
@@ -530,13 +530,13 @@ export default function PerfilDoador() {
         </button>
       </div>
 
-      {/* Modal Interativo de Recorte 3x4 */}
+      {/* Modal Interativo de Ajuste e Recorte de Foto */}
       {cropImageSrc && (
         <ImageCropperModal
           imageSrc={cropImageSrc}
           onCropComplete={handleConfirmCrop}
           onCancel={handleCancelCrop}
-          aspectRatio={3 / 4}
+          defaultFormat="original"
         />
       )}
     </div>
