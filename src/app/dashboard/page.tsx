@@ -50,6 +50,7 @@ import {
   GroupCampaign,
   SupportCampaign,
   parseSafeDate,
+  formatSafeDate,
   canDonateBlood,
   checkEligibilityForDate,
 } from '@/utils/donationRules';
@@ -1291,7 +1292,7 @@ export default function Dashboard() {
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-slate-900">{mutiraoTitle}</p>
                             <p className="text-[10px] text-slate-500 font-normal">
-                              {new Date(camp.campaign_date).toLocaleDateString('pt-BR')} • {camp.location}
+                              {formatSafeDate(camp.campaign_date)} • {camp.location}
                             </p>
                           </div>
                           <button

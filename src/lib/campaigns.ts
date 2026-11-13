@@ -589,7 +589,9 @@ export async function fetchUnifiedNotifications(
     }
 
     // 1. Notificações da Rede de Apoio SOS (Ativas)
-    const activeSos = supportRes.filter((s) => s.status === 'Ativa');
+    const activeSos = supportRes.filter(
+      (s) => s.status === 'Ativa' && !s.patient_name.toLowerCase().includes('teste')
+    );
     for (const sos of activeSos) {
       const isCompatible = userProfile?.blood_type
         ? canDonateBlood(userProfile.blood_type, sos.blood_type_needed)
@@ -617,15 +619,19 @@ export async function fetchUnifiedNotifications(
       });
     }
 
-    // 2. Avisos e Comunicados do Sistema
+    // 2. Avisos e Comunicados do Sistema (ignora avisos de teste)
     if (noticesRes.data) {
       for (const row of noticesRes.data) {
         try {
           const parsed = JSON.parse(row.content);
+          const rawTitle = parsed.title || row.title.replace(NOTICE_PREFIX, '');
+          if (rawTitle.toLowerCase().includes('teste') || (parsed.message && parsed.message.toLowerCase().includes('teste'))) {
+            continue;
+          }
           notifications.push({
             id: row.id,
             type: 'sistema',
-            title: sanitizeText(parsed.title || row.title.replace(NOTICE_PREFIX, ''), 140),
+            title: sanitizeText(rawTitle, 140),
             message: sanitizeText(parsed.message || '', 600),
             created_at: parsed.created_at || row.created_at,
             is_urgent: false,

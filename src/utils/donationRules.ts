@@ -229,20 +229,45 @@ export function validateNewDonation(
 }
 
 /**
- * Faz o parse seguro de uma string YYYY-MM-DD ou Date em UTC meia-noite local sem desvios de fuso horário.
+ * Faz o parse seguro de uma string YYYY-MM-DD ou Date com horário ao meio-dia local
+ * garantindo imunidade a desvios de fuso horário (ex.: UTC-3 Brasília).
  */
 export function parseSafeDate(dateInput?: Date | string | null): Date | null {
   if (!dateInput) return null;
   if (dateInput instanceof Date) {
-    return isNaN(dateInput.getTime()) ? null : new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate());
+    return isNaN(dateInput.getTime())
+      ? null
+      : new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate(), 12, 0, 0);
   }
-  const cleanStr = dateInput.split('T')[0];
+  const cleanStr = String(dateInput).split('T')[0].trim();
   const parts = cleanStr.split('-').map(Number);
   if (parts.length === 3 && !parts.some(isNaN)) {
-    return new Date(parts[0], parts[1] - 1, parts[2]);
+    return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
   }
   const parsed = new Date(dateInput);
   return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Formata com segurança qualquer data (YYYY-MM-DD, ISO ou Date) para 'DD/MM/YYYY'
+ * de forma puramente determinística sem sofrer recuo de fuso horário.
+ */
+export function formatSafeDate(dateInput?: Date | string | null): string {
+  if (!dateInput) return '';
+  if (typeof dateInput === 'string') {
+    const cleanStr = dateInput.split('T')[0].trim();
+    const parts = cleanStr.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const [year, month, day] = parts;
+      return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+    }
+  }
+  const parsed = parseSafeDate(dateInput);
+  if (!parsed) return typeof dateInput === 'string' ? dateInput : '';
+  const d = String(parsed.getDate()).padStart(2, '0');
+  const m = String(parsed.getMonth() + 1).padStart(2, '0');
+  const y = parsed.getFullYear();
+  return `${d}/${m}/${y}`;
 }
 
 /**

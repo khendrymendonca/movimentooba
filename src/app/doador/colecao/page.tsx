@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
-import { parseSafeDate, GroupCampaign } from '@/utils/donationRules';
+import { parseSafeDate, formatSafeDate, GroupCampaign } from '@/utils/donationRules';
 import {
   fetchGroupCampaigns,
   fetchUserSpecialBadges,
@@ -370,7 +370,7 @@ export default function ColecaoDoador() {
             {campaigns.map((camp, idx) => {
               const isUnlocked = userMutiraoIds.includes(camp.id);
               const mutiraoTitle = `${idx + 1}º Mutirão O Bom Amigo`;
-              const formattedDate = new Date(camp.campaign_date).toLocaleDateString('pt-BR');
+              const formattedDate = formatSafeDate(camp.campaign_date);
 
               return (
                 <div
@@ -585,7 +585,7 @@ export default function ColecaoDoador() {
                 <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
                 <span>
                   Conquistada em{' '}
-                  {new Date(selectedBadge.unlockedDate).toLocaleDateString('pt-BR')}
+                  {formatSafeDate(selectedBadge.unlockedDate)}
                 </span>
               </div>
             )}
