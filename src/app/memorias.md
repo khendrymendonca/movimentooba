@@ -18,3 +18,5 @@
   - Remoção dos espaços placeholder de imagens da landing page (no Hero e na Iniciativa) e da caixa "Quem sou eu?".
   - Implementação do **Card de Impacto Coletivo de Sangue Doado** no Hero da landing page: exibe o cumulativo de sangue doado (450 ml por doação registrada) desde o marco inicial de 12/09/2026, com total de doações e estimativa de vidas impactadas.
   - Adicionado atalho no Header do aplicativo do doador (`/doador`) e no Perfil (`/doador/perfil`) para voltar rapidamente ao site institucional (`/`).
+- **13/11/2026:**
+  - Correção na recuperação pública de estatísticas de sangue doado para visitantes deslogados / guias anônimas: substituído `.maybeSingle()` por `.order('created_at', { ascending: false }).limit(10)`, eliminando a falha PGRST116 causada por registros múltiplos no store de stats e garantindo a exibição precisa do volume cumulativo de sangue em qualquer contexto de navegação. Adicionado suporte a RPC pública `get_public_donation_stats`.
