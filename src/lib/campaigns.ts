@@ -950,7 +950,21 @@ export interface DonationStats {
 export async function fetchPublicDonationStats(supabase: SupabaseClient): Promise<DonationStats> {
   let count = 0;
 
-  // 1. Tenta consulta direta em donations
+  // 1. Tenta RPC oficial de estatísticas públicas (executável por anon ou authenticated)
+  try {
+    const { data: rpcStats, error: rpcErr } = await supabase.rpc('get_public_donation_stats');
+    if (!rpcErr && rpcStats && typeof rpcStats.totalDonations === 'number') {
+      return {
+        totalDonations: rpcStats.totalDonations,
+        totalMl: rpcStats.totalMl ?? rpcStats.totalDonations * 450,
+        totalLiters: rpcStats.totalLiters ?? (rpcStats.totalDonations * 450) / 1000,
+        totalLives: rpcStats.totalLives ?? rpcStats.totalDonations * 4,
+        startDate: rpcStats.startDate || '12/09/2026',
+      };
+    }
+  } catch {}
+
+  // 2. Consulta direta em donations (quando logado)
   try {
     const { count: directCount, error } = await supabase
       .from('donations')
@@ -960,19 +974,24 @@ export async function fetchPublicDonationStats(supabase: SupabaseClient): Promis
     }
   } catch {}
 
-  // 2. Fallback via store público em donation_guides
+  // 3. Fallback via store público em donation_guides (ordem decrescente, sem maybeSingle para não falhar com múltiplas linhas)
   if (count === 0) {
     try {
-      const { data } = await supabase
+      const { data: storeRows } = await supabase
         .from('donation_guides')
         .select('content')
         .eq('title', STATS_KEY)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-      if (data?.content) {
-        const parsed = JSON.parse(data.content);
-        if (typeof parsed?.totalDonations === 'number') {
-          count = Math.max(count, parsed.totalDonations);
+      if (storeRows && storeRows.length > 0) {
+        for (const row of storeRows) {
+          try {
+            const parsed = JSON.parse(row.content);
+            if (typeof parsed?.totalDonations === 'number') {
+              count = Math.max(count, parsed.totalDonations);
+            }
+          } catch {}
         }
       }
     } catch {}
@@ -1016,17 +1035,18 @@ export async function syncGlobalDonationsCount(
       updatedAt: new Date().toISOString(),
     });
 
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('donation_guides')
       .select('id')
       .eq('title', STATS_KEY)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (existing?.id) {
+    if (existingRows && existingRows.length > 0 && existingRows[0].id) {
       await supabase
         .from('donation_guides')
         .update({ content: payload })
-        .eq('id', existing.id);
+        .eq('id', existingRows[0].id);
     } else {
       await supabase
         .from('donation_guides')
