@@ -298,7 +298,7 @@ export default function PerfilDoador() {
               {userProfile.name || 'Doador'}
             </h2>
             <p className="text-xs text-slate-500 font-normal mt-0.5 leading-relaxed">
-              Toque na foto para enviar ou recortar (proporção 3x4 oficial). Aceita fotos nítidas de até 15MB.
+              Toque na foto para alterar.
             </p>
             {uploading && (
               <span className="inline-block mt-1.5 text-[11px] text-red-600 font-normal">

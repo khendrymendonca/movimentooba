@@ -657,14 +657,104 @@ export async function fetchUnifiedNotifications(
       }
     }
 
+    // 4. Filtra notificações que o usuário já dispensou/limpou no sistema
+    const dismissedIds = getUserDismissedNotificationIds(userProfile);
+    const activeNotifications = dismissedIds.length > 0
+      ? notifications.filter((n) => !dismissedIds.includes(n.id))
+      : notifications;
+
     // Ordena as mais recentes primeiro, priorizando as urgentes no topo
-    return notifications.sort((a, b) => {
+    return activeNotifications.sort((a, b) => {
       if (a.is_urgent && !b.is_urgent) return -1;
       if (!a.is_urgent && b.is_urgent) return 1;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   } catch {
     return [];
+  }
+}
+
+/**
+ * Recupera os IDs de notificações já limpas/dispensadas pelo usuário diretamente do sistema (banco).
+ */
+export function getUserDismissedNotificationIds(userProfile?: any): string[] {
+  if (!userProfile) return [];
+
+  // 1. Coluna dedicada se existir
+  if (Array.isArray(userProfile.cleared_notifications)) {
+    return userProfile.cleared_notifications.filter(Boolean);
+  }
+
+  // 2. Coluna theme_preference (JSON estruturado com dismissed_notifs)
+  if (typeof userProfile.theme_preference === 'string' && userProfile.theme_preference.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(userProfile.theme_preference);
+      if (Array.isArray(parsed?.dismissed_notifs)) {
+        return parsed.dismissed_notifs.filter(Boolean);
+      }
+      if (Array.isArray(parsed?.cleared_notifs)) {
+        return parsed.cleared_notifs.filter(Boolean);
+      }
+    } catch {}
+  }
+
+  return [];
+}
+
+/**
+ * Salva permanentemente no sistema (banco de dados) que o usuário dispensou uma ou mais notificações.
+ * Essas notificações NUNCA MAIS reaparecerão para ele em nenhum aparelho ou guia anônima.
+ */
+export async function persistDismissedNotifications(
+  supabase: SupabaseClient,
+  userId: string,
+  notifIdOrIds: string | string[]
+): Promise<void> {
+  if (!userId) return;
+
+  const newIds = Array.isArray(notifIdOrIds) ? notifIdOrIds : [notifIdOrIds];
+  if (newIds.length === 0) return;
+
+  try {
+    // 1. Tenta chamar RPC no banco caso instalada
+    try {
+      await supabase.rpc('mark_all_notifications_cleared', { p_notif_ids: newIds });
+    } catch {}
+
+    // 2. Persiste em profiles.theme_preference preservando qualquer dado existente
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('theme_preference')
+      .eq('id', userId)
+      .maybeSingle();
+
+    let existingObj: Record<string, any> = {};
+    let existingList: string[] = [];
+
+    if (prof?.theme_preference && prof.theme_preference.startsWith('{')) {
+      try {
+        existingObj = JSON.parse(prof.theme_preference);
+        if (Array.isArray(existingObj.dismissed_notifs)) {
+          existingList = existingObj.dismissed_notifs;
+        } else if (Array.isArray(existingObj.cleared_notifs)) {
+          existingList = existingObj.cleared_notifs;
+        }
+      } catch {}
+    }
+
+    const merged = Array.from(new Set([...existingList, ...newIds]));
+    const updatedThemePreference = JSON.stringify({
+      ...existingObj,
+      dismissed_notifs: merged,
+      updated_at: new Date().toISOString(),
+    });
+
+    await supabase
+      .from('profiles')
+      .update({ theme_preference: updatedThemePreference })
+      .eq('id', userId);
+  } catch (e) {
+    console.error('Erro ao persistir notificações limpas no sistema:', e);
   }
 }
 

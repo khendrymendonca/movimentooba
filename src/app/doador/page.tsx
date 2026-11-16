@@ -24,6 +24,8 @@ import {
   fetchUnifiedNotifications,
   fetchProjectConfig,
   toggleCampaignConfirmation,
+  getUserDismissedNotificationIds,
+  persistDismissedNotifications,
   MAX_CAMPAIGN_PARTICIPANTS,
   DEFAULT_PROJECT_CONFIG,
   ProjectConfig,
@@ -102,9 +104,23 @@ export default function DoadorHome() {
     setSupportCampaigns(loadedSupport.filter((s) => s.status === 'Ativa'));
     setConfig(loadedConfig);
 
-    // Filtra apenas notificações que o usuário não limpou/descartou
-    const clearedIds: string[] = JSON.parse(localStorage.getItem('cleared_notif_ids') || '[]');
-    const visibleNotifs = loadedNotifs.filter((n) => !clearedIds.includes(n.id));
+    // 1. Obtém notificações limpas salvas no sistema (banco de dados)
+    const dbClearedIds = getUserDismissedNotificationIds(currentProfile);
+
+    // 2. Faz o merge com o localStorage do aparelho
+    const localClearedIds: string[] = JSON.parse(localStorage.getItem('cleared_notif_ids') || '[]');
+    const mergedClearedIds = Array.from(new Set([...dbClearedIds, ...localClearedIds]));
+
+    // Atualiza o localStorage local
+    localStorage.setItem('cleared_notif_ids', JSON.stringify(mergedClearedIds));
+
+    // Se o aparelho tinha notificações limpas ainda não sincronizadas com o banco, salva no sistema
+    if (userId && localClearedIds.some((id) => !dbClearedIds.includes(id))) {
+      persistDismissedNotifications(supabase, userId, mergedClearedIds);
+    }
+
+    // 3. Filtra: notificações limpas NUNCA MAIS aparecem no sino
+    const visibleNotifs = loadedNotifs.filter((n) => !mergedClearedIds.includes(n.id));
     setNotifications(visibleNotifs);
 
     // Checa notificações não lidas no localStorage dentre as ativas
@@ -130,34 +146,44 @@ export default function DoadorHome() {
     // 1. Remove da tela imediatamente
     setNotifications((prev) => prev.filter((n) => n.id !== id));
 
-    // 2. Persiste como limpa no localStorage para nunca mais reaparecer
+    // 2. Salva localmente
     const clearedIds: string[] = JSON.parse(localStorage.getItem('cleared_notif_ids') || '[]');
-    if (!clearedIds.includes(id)) {
-      clearedIds.push(id);
-      localStorage.setItem('cleared_notif_ids', JSON.stringify(clearedIds));
-    }
+    const updated = Array.from(new Set([...clearedIds, id]));
+    localStorage.setItem('cleared_notif_ids', JSON.stringify(updated));
 
     const readIds: string[] = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
     if (!readIds.includes(id)) {
       readIds.push(id);
       localStorage.setItem('read_notif_ids', JSON.stringify(readIds));
     }
+
+    // 3. PERSISTE NO SISTEMA (BANCO DE DADOS): nunca mais reaparece
+    if (profile?.id) {
+      persistDismissedNotifications(supabase, profile.id, id);
+    }
   };
 
   const handleMarkAllRead = () => {
     const idsToClear = notifications.map((n) => n.id);
-    const clearedIds: string[] = JSON.parse(localStorage.getItem('cleared_notif_ids') || '[]');
-    const readIds: string[] = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
+    if (idsToClear.length === 0) return;
 
+    // 1. Remove todas da tela imediatamente
+    setNotifications([]);
+    setHasUnreadNotifs(false);
+
+    // 2. Salva localmente
+    const clearedIds: string[] = JSON.parse(localStorage.getItem('cleared_notif_ids') || '[]');
     const updatedCleared = Array.from(new Set([...clearedIds, ...idsToClear]));
+    const readIds: string[] = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
     const updatedRead = Array.from(new Set([...readIds, ...idsToClear]));
 
     localStorage.setItem('cleared_notif_ids', JSON.stringify(updatedCleared));
     localStorage.setItem('read_notif_ids', JSON.stringify(updatedRead));
 
-    // Remove todas da tela imediatamente
-    setNotifications([]);
-    setHasUnreadNotifs(false);
+    // 3. PERSISTE NO SISTEMA (BANCO DE DADOS): nunca mais reaparecem
+    if (profile?.id) {
+      persistDismissedNotifications(supabase, profile.id, idsToClear);
+    }
   };
 
   const handleToggleRsvp = async (camp: GroupCampaign) => {

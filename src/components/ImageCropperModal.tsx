@@ -69,9 +69,9 @@ export function ImageCropperModal({
     setZoom(1);
   };
 
-  // Dimensões da caixa de corte no preview (máximo 280px largura por 340px altura na tela mobile)
-  const maxBoxWidth = 280;
-  const maxBoxHeight = 340;
+  // Dimensões seguras da caixa de corte no preview para caber perfeitamente no celular
+  const maxBoxWidth = 240;
+  const maxBoxHeight = 220;
 
   let boxWidth = maxBoxWidth;
   let boxHeight = maxBoxWidth / currentAspectRatio;
@@ -271,66 +271,77 @@ export function ImageCropperModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-5 select-none animate-in fade-in duration-200">
-      {/* Topo / Cabeçalho */}
-      <div className="w-full max-w-md flex items-center justify-between text-white py-1.5 z-10">
-        <div>
-          <h3 className="text-base font-bold tracking-tight">Ajustar Foto de Perfil</h3>
-          <p className="text-xs text-white/70">Arraste e ajuste o tamanho como preferir</p>
+    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-3 select-none overflow-y-auto max-h-[100dvh] animate-in fade-in duration-200">
+      {/* Topo / Cabeçalho enxuto com botão de Salvar e Fechar */}
+      <div className="w-full max-w-md flex items-center justify-between text-white py-1 shrink-0 z-10">
+        <h3 className="text-sm font-semibold tracking-tight">Ajustar Foto</h3>
+
+        <div className="flex items-center gap-2">
+          {/* Botão de Salvar sempre visível no topo */}
+          <button
+            type="button"
+            onClick={handleCrop}
+            disabled={!imageLoaded}
+            className="px-3.5 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <Check size={14} />
+            <span>Salvar Foto</span>
+          </button>
+
+          <button
+            onClick={onCancel}
+            className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            aria-label="Cancelar"
+          >
+            <X size={18} />
+          </button>
         </div>
-        <button
-          onClick={onCancel}
-          className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-          aria-label="Cancelar"
-        >
-          <X size={20} />
-        </button>
       </div>
 
       {/* Seletor de Formato / Proporção (Livre / 1:1 / 3:4) */}
-      <div className="w-full max-w-md flex items-center justify-center gap-1.5 z-10 bg-white/10 p-1 rounded-xl backdrop-blur-md">
+      <div className="w-full max-w-md flex items-center justify-center gap-1 shrink-0 z-10 bg-white/10 p-1 rounded-xl backdrop-blur-md my-1">
         <button
           type="button"
           onClick={() => handleFormatChange('original')}
-          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
             format === 'original'
               ? 'bg-white text-slate-900 shadow-sm'
               : 'text-white/80 hover:text-white hover:bg-white/5'
           }`}
         >
           <Maximize2 size={13} />
-          <span>Original (Livre)</span>
+          <span>Livre</span>
         </button>
 
         <button
           type="button"
           onClick={() => handleFormatChange('1:1')}
-          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
             format === '1:1'
               ? 'bg-white text-slate-900 shadow-sm'
               : 'text-white/80 hover:text-white hover:bg-white/5'
           }`}
         >
           <Square size={13} />
-          <span>Quadrado (1:1)</span>
+          <span>1:1</span>
         </button>
 
         <button
           type="button"
           onClick={() => handleFormatChange('3:4')}
-          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
             format === '3:4'
               ? 'bg-white text-slate-900 shadow-sm'
               : 'text-white/80 hover:text-white hover:bg-white/5'
           }`}
         >
           <Smartphone size={13} />
-          <span>3x4 Carteirinha</span>
+          <span>3x4</span>
         </button>
       </div>
 
       {/* Área Central de Visualização e Recorte */}
-      <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden my-2">
+      <div className="relative w-full flex-1 min-h-0 flex items-center justify-center overflow-hidden my-1">
         {/* Caixa de Recorte Dinâmica com Máscara e Borda Limpa */}
         <div
           ref={containerRef}
@@ -342,7 +353,7 @@ export function ImageCropperModal({
             width: `${Math.round(boxWidth)}px`,
             height: `${Math.round(boxHeight)}px`,
           }}
-          className="relative rounded-2xl overflow-hidden cursor-grab active:cursor-grabbing border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.7)] z-10 touch-none flex items-center justify-center transition-all duration-200"
+          className="relative rounded-2xl overflow-hidden cursor-grab active:cursor-grabbing border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.75)] z-10 touch-none flex items-center justify-center transition-all duration-200"
         >
           {/* Grade 3x3 sutil de auxílio */}
           <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 z-20 opacity-20">
@@ -378,17 +389,17 @@ export function ImageCropperModal({
         </div>
       </div>
 
-      {/* Controles de Zoom, Rotação e Ações */}
-      <div className="w-full max-w-md bg-slate-900/95 border border-white/10 rounded-2xl p-3.5 space-y-3 z-10 backdrop-blur-md">
-        {/* Controle deslizante de Zoom Amplo (0.5x até 3.5x) e Girar */}
-        <div className="flex items-center gap-2.5">
+      {/* Controles de Zoom, Rotação e Ações no Rodapé */}
+      <div className="w-full max-w-md bg-slate-900/95 border border-white/10 rounded-2xl p-2.5 space-y-2 shrink-0 z-10 backdrop-blur-md">
+        {/* Controle deslizante de Zoom e Botão Girar */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))}
-            className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+            className="p-1 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
             title="Reduzir zoom"
           >
-            <ZoomOut size={16} />
+            <ZoomOut size={15} />
           </button>
 
           <input
@@ -404,19 +415,19 @@ export function ImageCropperModal({
           <button
             type="button"
             onClick={() => setZoom((z) => Math.min(3.5, +(z + 0.15).toFixed(2)))}
-            className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+            className="p-1 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
             title="Aumentar zoom"
           >
-            <ZoomIn size={16} />
+            <ZoomIn size={15} />
           </button>
 
           <button
             type="button"
             onClick={rotateClockwise}
-            className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center gap-1 text-xs"
+            className="p-1 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center gap-1 text-xs"
             title="Girar 90 graus"
           >
-            <RotateCw size={15} />
+            <RotateCw size={14} />
           </button>
         </div>
 
@@ -427,22 +438,22 @@ export function ImageCropperModal({
             type="button"
             onClick={handleUseFullImage}
             disabled={!imageLoaded}
-            className="flex-1 py-2.5 px-3 rounded-xl border border-white/25 hover:bg-white/10 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+            className="flex-1 py-2 px-3 rounded-xl border border-white/25 hover:bg-white/10 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
             title="Salva a foto inteira sem cortar"
           >
             <Sparkles size={14} className="text-amber-400" />
             <span>Usar Foto Inteira</span>
           </button>
 
-          {/* Confirmar Recorte */}
+          {/* Salvar Foto Recortada */}
           <button
             type="button"
             onClick={handleCrop}
             disabled={!imageLoaded}
-            className="flex-1 py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-lg shadow-red-600/30 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+            className="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-lg shadow-red-600/30 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
           >
             <Check size={16} />
-            <span>Confirmar Ajuste</span>
+            <span>Salvar Foto</span>
           </button>
         </div>
       </div>
