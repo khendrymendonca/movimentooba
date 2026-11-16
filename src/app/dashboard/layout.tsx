@@ -10,7 +10,6 @@ import {
   IdCard,
   Award,
   LayoutDashboard,
-  Shirt,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -71,67 +70,6 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-[100dvh] bg-[#f8f9fa] flex flex-col">
-      {/* Barra de Sub-Navegação Administrativa no Topo (Acesso rápido a todas as áreas) */}
-      <div className="bg-slate-900 text-white px-3 py-2 sticky top-0 z-40 border-b border-slate-800 flex items-center justify-between overflow-x-auto print:hidden shadow-xs">
-        <div className="flex items-center gap-1.5 min-w-max mx-auto">
-          <Link
-            href="/dashboard"
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-              pathname === "/dashboard"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-300 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            Visão Geral
-          </Link>
-
-          <Link
-            href="/dashboard/camisas"
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5 ${
-              pathname === "/dashboard/camisas"
-                ? "bg-red-600 text-white shadow-xs font-semibold"
-                : "text-slate-300 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            <Shirt size={14} />
-            <span>Camisas Oficiais</span>
-          </Link>
-
-          <Link
-            href="/dashboard/membros"
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-              pathname === "/dashboard/membros"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-300 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            Membros
-          </Link>
-
-          <Link
-            href="/dashboard/noticias"
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-              pathname === "/dashboard/noticias"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-300 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            Mural
-          </Link>
-
-          <Link
-            href="/dashboard/apoio"
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-              pathname === "/dashboard/apoio"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-300 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            Apoio
-          </Link>
-        </div>
-      </div>
-
       {/* Conteúdo Principal Mobile/Tablet (Idêntico ao DoadorLayout) */}
       <div className="flex-1 flex flex-col relative min-h-[100dvh]">
         <main className="flex-1 pb-24">

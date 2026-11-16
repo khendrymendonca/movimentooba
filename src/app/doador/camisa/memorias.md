@@ -1,27 +1,20 @@
-# Memórias da Tela: Solicitação da Camisa Oficial (/doador/camisa)
+# Memórias da Tela: Solicitação de Produtos Oficiais (/doador/camisa)
 
 **Rota:** `/doador/camisa`  
 **Arquivo Fonte:** `src/app/doador/camisa/page.tsx`  
-**Finalidade:** Permitir aos membros solicitarem a camisa oficial do Movimento O Bom Amigo, escolhendo tamanho, quantidade, observações e acompanhando o status do pagamento (pendente, sinal ou quitado) com chave PIX e envio de comprovante no WhatsApp da coordenação.
+**Finalidade:** Permitir aos membros solicitarem produtos oficiais do Movimento O Bom Amigo (ex: Camisa, Caneca, etc.) quando habilitados pelo Admin em Pré-Save ou Solicitação Oficial.
 
 ---
 
 ## 1. Histórico e Decisões Anteriores
-- **16/11/2026:** Criação da tela de solicitação e acompanhamento da camisa oficial. Visualização da foto/arte oficial, cálculo automático de valor total, chave PIX com botão de cópia de 1 clique, atalho direto para envio do comprovante no WhatsApp e suporte a edição e cancelamento.
+- **16/11/2026:** Evolução para **Produtos Oficiais**:
+  - Exibe apenas produtos habilitados pelo Admin (`pre_save` dentro da data limite ou `oficial`).
+  - Se o produto estiver como `encomendado` ou `inativo`, não aparece para os membros.
+  - Suporte tanto a produtos com grade de tamanhos (vestuário) quanto produtos de tamanho único (ex: caneca).
+  - Arte oficial opcional (exibida assim que o Admin subir a imagem).
 
-## 2. Regras de Negócio e Comportamento
-- **Grade de Tamanhos:** PP, P, M, G, GG, XGG, Babylook (P, M, G, GG) e Infantil (10, 12, 14).
-- **Valores e Quantidades:** Cálculo em tempo real com base no preço unitário configurado pela coordenação.
-- **Status de Pagamento:**
-  - `Aguardando Pagamento` (Pendente)
-  - `Sinal Pago` (exibe valor abatido e restante a pagar)
-  - `Quitado (100% Pago)`
-  - `Camisa Entregue`
-- **Comunicação:** Link dinâmico para o WhatsApp com mensagem pré-formatada contendo tamanho, quantidade e valores.
-
-## 3. Diário de Bordo
+## 2. Diário de Bordo
 | Data | Tipo (Bug/UI/Regra) | Descrição da Alteração | Responsável |
 |---|---|---|---|
-| 16/11/2026 | Inicialização | Lançamento oficial do módulo de Camisas Oficiais para membros | Antigravity |
-| 16/11/2026 | Regra/UI | Suporte ao modo Pré-Save: indicação de interesse/tamanho sem cobrança imediata e transição transparente quando o admin lança o preço final e dados PIX | Antigravity |
-| 16/11/2026 | UX | Banner superior exclusivo para Super Usuário com atalho direto para o painel de gestão | Antigravity |
+| 16/11/2026 | Inicialização | Lançamento da tela de solicitação | Antigravity |
+| 16/11/2026 | Regra/UI | Adaptação para Produtos Oficiais genéricos com ciclo completo controlado pelo Admin | Antigravity |

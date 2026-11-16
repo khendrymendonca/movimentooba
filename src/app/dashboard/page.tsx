@@ -382,34 +382,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* CARD EM DESTAQUE: GESTÃO DAS CAMISAS OFICIAIS */}
-        <Link
-          href="/dashboard/camisas"
-          className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 sm:p-5 rounded-2xl border border-slate-700/60 shadow-sm flex items-center justify-between gap-4 hover:from-slate-800 hover:to-slate-700 transition-all group"
-        >
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Shirt size={22} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
-                  Gestão das Camisas Oficiais
-                </h3>
-                <span className="text-[10px] bg-red-500/30 text-red-300 border border-red-500/40 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0">
-                  Novo
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 font-normal mt-0.5 truncate">
-                Controle de quem pagou, quem deu sinal, quem não pediu e confecção.
-              </p>
-            </div>
-          </div>
-          <ChevronRight size={18} className="text-slate-400 group-hover:text-white transition-colors shrink-0" />
-        </Link>
-
-        {/* Atalhos Rápidos para Membros e Mural */}
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* Atalhos Rápidos para Membros, Mural e Produtos Oficiais */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <Link
             href="/dashboard/membros"
             className="bg-white p-4 rounded-2xl border border-slate-200/80 hover:border-slate-300 transition-colors flex items-center justify-between gap-2"
@@ -428,6 +402,17 @@ export default function Dashboard() {
             <div>
               <h3 className="text-xs sm:text-sm font-medium text-slate-900">Mural</h3>
               <p className="text-[11px] text-slate-500 font-normal mt-0.5">Publicar avisos</p>
+            </div>
+            <ChevronRight size={16} className="text-slate-400 shrink-0" />
+          </Link>
+
+          <Link
+            href="/dashboard/camisas"
+            className="bg-white p-4 rounded-2xl border border-slate-200/80 hover:border-slate-300 transition-colors flex items-center justify-between gap-2"
+          >
+            <div>
+              <h3 className="text-xs sm:text-sm font-medium text-slate-900">Produtos Oficiais</h3>
+              <p className="text-[11px] text-slate-500 font-normal mt-0.5">Pré-save e pedidos</p>
             </div>
             <ChevronRight size={16} className="text-slate-400 shrink-0" />
           </Link>

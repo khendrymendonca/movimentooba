@@ -15,7 +15,8 @@ import {
   Share2,
   LifeBuoy,
   Globe,
-  Shirt,
+  ShoppingBag,
+  X,
 } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
@@ -32,11 +33,12 @@ import {
   ProjectConfig,
 } from '@/lib/campaigns';
 import {
-  fetchShirtConfig,
-  fetchUserShirtOrder,
-  ShirtConfig,
+  fetchOfficialProducts,
+  fetchUserProductOrders,
+  isProductVisibleToMembers,
+  formatDeadlineBR,
+  OfficialProduct,
   ShirtOrder,
-  DEFAULT_SHIRT_CONFIG,
 } from '@/lib/shirtOrders';
 import {
   checkEligibilityForDate,
@@ -65,8 +67,9 @@ export default function DoadorHome() {
   const [config, setConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [selectedSupportModal, setSelectedSupportModal] = useState<SupportCampaign | null>(null);
-  const [shirtConfig, setShirtConfig] = useState<ShirtConfig>(DEFAULT_SHIRT_CONFIG);
-  const [shirtOrder, setShirtOrder] = useState<ShirtOrder | null>(null);
+  const [officialProducts, setOfficialProducts] = useState<OfficialProduct[]>([]);
+  const [userOrders, setUserOrders] = useState<ShirtOrder[]>([]);
+  const [previewProductArtwork, setPreviewProductArtwork] = useState<OfficialProduct | null>(null);
   const supabase = createClient();
 
   async function loadAll() {
@@ -99,30 +102,29 @@ export default function DoadorHome() {
       loadedSupport,
       loadedConfig,
       loadedNotifs,
-      loadedShirtConfig,
-      loadedUserOrder,
+      loadedProducts,
+      loadedUserOrders,
     ] = await Promise.all([
       supabase.from('news').select('*').order('created_at', { ascending: false }),
-      fetchGroupCampaigns(supabase, userId),
-      fetchSupportCampaigns(supabase),
-      fetchProjectConfig(supabase),
-      fetchUnifiedNotifications(supabase, currentProfile || undefined),
-      fetchShirtConfig(supabase),
-      userId ? fetchUserShirtOrder(supabase, userId) : Promise.resolve(null),
+      fetchGroupCampaigns(supabase, userId).catch(() => []),
+      fetchSupportCampaigns(supabase).catch(() => []),
+      fetchProjectConfig(supabase).catch(() => DEFAULT_PROJECT_CONFIG),
+      fetchUnifiedNotifications(supabase, currentProfile || undefined).catch(() => []),
+      fetchOfficialProducts(supabase).catch(() => []),
+      userId ? fetchUserProductOrders(supabase, userId).catch(() => []) : Promise.resolve([]),
     ]);
 
     if (newsData) setFeed(newsData);
-    if (loadedShirtConfig) setShirtConfig(loadedShirtConfig);
-    if (loadedUserOrder) setShirtOrder(loadedUserOrder);
+    if (loadedProducts) setOfficialProducts(loadedProducts.filter(isProductVisibleToMembers));
+    if (loadedUserOrders) setUserOrders(loadedUserOrders);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    setCampaigns(
-      loadedCampaigns.filter((c) => {
-        const d = parseSafeDate(c.campaign_date);
-        return d && d >= today;
-      })
-    );
+    const upcoming = loadedCampaigns.filter((c) => {
+      const d = parseSafeDate(c.campaign_date);
+      return d && d >= today;
+    });
+    setCampaigns(upcoming.length > 0 ? upcoming : loadedCampaigns);
     setSupportCampaigns(loadedSupport.filter((s) => s.status === 'Ativa'));
     setConfig(loadedConfig);
 
@@ -340,81 +342,72 @@ export default function DoadorHome() {
           </div>
         </div>
 
-        {/* BANNER DA CAMISA OFICIAL DO MOVIMENTO */}
-        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-5 border border-slate-700/60 shadow-sm relative overflow-hidden">
-          <div className="flex items-start justify-between gap-3 relative z-10">
-            <div className="space-y-1.5 flex-1 min-w-0">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider">
-                <Shirt size={12} />
-                {shirtConfig?.campaignPhase === 'pre_save' ? 'Pré-Save Aberto' : 'Camisa Oficial'}
-              </div>
-              <h3 className="text-sm sm:text-base font-bold tracking-tight text-white">
-                Camisa Oficial do Movimento
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed font-normal">
-                {shirtOrder
-                  ? shirtConfig?.campaignPhase === 'pre_save' || shirtOrder.paymentStatus === 'pre_save'
-                    ? `Seu Pré-Save está confirmado: Tamanho ${shirtOrder.size} • ${shirtOrder.quantity} ${shirtOrder.quantity > 1 ? 'camisas' : 'camisa'} (Sem custo agora).`
-                    : `Seu pedido: Tamanho ${shirtOrder.size} • ${shirtOrder.quantity} un. (${
-                        shirtOrder.paymentStatus === 'pago'
-                          ? 'Quitado'
-                          : shirtOrder.paymentStatus === 'sinal'
-                          ? `Sinal Pago: R$ ${shirtOrder.amountPaid?.toFixed(2).replace('.', ',')}`
-                          : 'Aguardando Pagamento'
-                      })`
-                  : shirtConfig?.campaignPhase === 'pre_save'
-                  ? 'Participe do Pré-Save! Indique seu tamanho e quantidade sem cobrança agora para cotarmos o melhor preço com a confecção.'
-                  : `Vista a camisa nos mutirões! Encomende a sua por apenas R$ ${(
-                      shirtConfig?.price || 45
-                    )
-                      .toFixed(2)
-                      .replace('.', ',')}.`}
-              </p>
-            </div>
-
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border border-white/20 bg-black/40 shrink-0">
-              <img
-                src={shirtConfig?.imageUrl || DEFAULT_SHIRT_CONFIG.imageUrl}
-                alt="Camisa Oficial"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-
-          <div className="pt-3 mt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 relative z-10">
-            <span className="text-xs text-slate-300 font-medium">
-              {shirtConfig?.campaignPhase === 'pre_save'
-                ? 'Sem custo agora (Cotação em andamento)'
-                : `R$ ${(shirtConfig?.price || 45).toFixed(2).replace('.', ',')} / unidade`}
-            </span>
-            <div className="flex items-center gap-2">
-              {profile?.role === 'ADM' && (
-                <Link
-                  href="/dashboard/camisas"
-                  className="px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors flex items-center gap-1 shadow-xs"
+        {/* Produtos Oficiais (Só aparece quando o Admin habilitar o Pré-Save ou Solicitação, e some quando Encomendado) */}
+        {officialProducts.length > 0 && (
+          <div className="space-y-2.5">
+            {officialProducts.map((prod) => {
+              const myOrder = userOrders.find(
+                (o) => o.productId === prod.id || (!o.productId && prod.id === officialProducts[0]?.id)
+              );
+              return (
+                <div
+                  key={prod.id}
+                  className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 flex items-center justify-between gap-4"
                 >
-                  <Shirt size={13} />
-                  <span>Painel de Gestão</span>
-                </Link>
-              )}
-              <Link
-                href="/doador/camisa"
-                className="px-4 py-2 rounded-full bg-white hover:bg-slate-100 text-slate-900 text-xs font-semibold transition-colors flex items-center gap-1 shadow-xs"
-              >
-                <span>
-                  {shirtOrder
-                    ? shirtConfig?.campaignPhase === 'pre_save'
-                      ? 'Ver Meu Pré-Save'
-                      : 'Ver Meu Pedido'
-                    : shirtConfig?.campaignPhase === 'pre_save'
-                    ? 'Garantir Meu Pré-Save'
-                    : 'Solicitar Camisa'}
-                </span>
-                <span>→</span>
-              </Link>
-            </div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    {prod.imageUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewProductArtwork(prod)}
+                        title="Clique para ampliar a arte"
+                        className="w-11 h-11 rounded-xl border border-slate-200 overflow-hidden shrink-0 bg-slate-50 cursor-pointer hover:opacity-90 transition-opacity"
+                      >
+                        <img
+                          src={prod.imageUrl}
+                          alt={prod.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                        <ShoppingBag size={20} />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <h3 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
+                        {prod.name}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-normal truncate mt-0.5">
+                        {myOrder
+                          ? `Sua solicitação: ${myOrder.quantity} un.${
+                              prod.hasSizes && myOrder.size ? ` (Tam. ${myOrder.size})` : ''
+                            }`
+                          : prod.phase === 'pre_save'
+                          ? `Pré-Save aberto${
+                              prod.preSaveDeadline
+                                ? ` até ${formatDeadlineBR(prod.preSaveDeadline)}`
+                                : ''
+                            }`
+                          : `Solicitações abertas • R$ ${prod.price.toFixed(2).replace('.', ',')} / un.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    href={`/doador/camisa?produto=${encodeURIComponent(prod.id)}`}
+                    className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors shrink-0"
+                  >
+                    {myOrder
+                      ? 'Ver Pedido'
+                      : prod.phase === 'pre_save'
+                      ? 'Pré-Save'
+                      : 'Solicitar'}
+                  </Link>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        )}
 
         {/* REDE DE APOIO SOS (Campanhas de quem está precisando de sangue) */}
         {supportCampaigns.length > 0 && (
@@ -801,6 +794,51 @@ export default function DoadorHome() {
               >
                 Agendar Doação
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Visualização da Arte do Produto na Tela Inicial */}
+      {previewProductArtwork && previewProductArtwork.imageUrl && (
+        <div
+          className="fixed inset-0 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center z-[100] p-4"
+          onClick={() => setPreviewProductArtwork(null)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85dvh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 truncate">
+                {previewProductArtwork.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewProductArtwork(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 bg-slate-100 flex items-center justify-center p-3 overflow-hidden">
+              <img
+                src={previewProductArtwork.imageUrl}
+                alt={previewProductArtwork.name}
+                className="max-w-full max-h-[65dvh] object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="shrink-0 px-4 py-3 bg-white border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setPreviewProductArtwork(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

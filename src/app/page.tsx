@@ -62,9 +62,9 @@ export default function LandingPage() {
   useEffect(() => {
     async function loadPublicData() {
       const [loadedCampaigns, sessionRes, statsRes] = await Promise.all([
-        fetchGroupCampaigns(supabase),
-        supabase.auth.getSession(),
-        fetchPublicDonationStats(supabase),
+        fetchGroupCampaigns(supabase).catch(() => []),
+        supabase.auth.getSession().catch(() => ({ data: { session: null } })),
+        fetchPublicDonationStats(supabase).catch(() => null),
       ]);
 
       const today = new Date();
@@ -74,12 +74,12 @@ export default function LandingPage() {
         return d && d >= today;
       });
 
-      setCampaigns(upcoming);
-      setHasSession(!!sessionRes.data.session);
+      setCampaigns(upcoming.length > 0 ? upcoming : loadedCampaigns);
+      setHasSession(!!sessionRes?.data?.session);
       if (statsRes) setDonationStats(statsRes);
     }
     loadPublicData();
-  }, [supabase]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">

@@ -88,7 +88,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 onClick={onClose}
               >
                 <Shirt size={18} strokeWidth={2} />
-                <span>Camisas Oficiais</span>
+                <span>Produtos Oficiais</span>
               </Link>
             </li>
             <li>

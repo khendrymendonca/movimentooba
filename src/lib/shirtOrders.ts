@@ -1,15 +1,32 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export const SHIRT_CONFIG_KEY = '[CONFIG_CAMISA]';
+export const PRODUCTS_CATALOG_KEY = '[CATALOGO_PRODUTOS_OFICIAIS]';
 export const SHIRT_ORDER_PREFIX = '[PEDIDO_CAMISA] ';
 
-export type CampaignPhase = 'pre_save' | 'oficial';
+export type CampaignPhase = 'inativo' | 'pre_save' | 'oficial' | 'encomendado';
+
+export interface OfficialProduct {
+  id: string;
+  name: string;
+  description?: string;
+  hasSizes: boolean; // true para Camisa/Vestuário, false para Caneca/Outros
+  imageUrl: string; // vazio até o admin subir a arte
+  phase: CampaignPhase;
+  preSaveDeadline?: string; // YYYY-MM-DD
+  price: number;
+  pixKey: string;
+  pixReceiver: string;
+  pixBank?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ShirtConfig {
   campaignPhase: CampaignPhase;
   isPriceDefined: boolean;
-  price: number; // 0 se ainda não definido, ou valor final
-  estimatedPrice?: string; // ex: "A definir após cotação" ou "Aprox. R$ 40 - R$ 45"
+  price: number;
+  estimatedPrice?: string;
   imageUrl: string;
   pixKey: string;
   pixReceiver: string;
@@ -21,18 +38,18 @@ export interface ShirtConfig {
 }
 
 export const DEFAULT_SHIRT_CONFIG: ShirtConfig = {
-  campaignPhase: 'pre_save',
+  campaignPhase: 'inativo',
   isPriceDefined: false,
   price: 0,
-  estimatedPrice: 'A definir com a fábrica (sem pagamento agora)',
-  imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
+  estimatedPrice: 'A definir após o Pré-Save',
+  imageUrl: '',
   pixKey: 'contato@movimentooba.com.br',
   pixReceiver: 'Movimento O Bom Amigo',
-  pixBank: 'Banco Inter / NuBank',
-  isActive: true,
-  deadline: 'Em levantamento de demanda para cotação',
-  deliveryInfo: 'Entrega presencial nos mutirões de doação ou no Hemominas.',
-  description: 'Camisa oficial do Movimento O Bom Amigo. Tecido premium de alta durabilidade para vestir a causa nas doações.',
+  pixBank: '',
+  isActive: false,
+  deadline: '',
+  deliveryInfo: 'Entrega presencial nos mutirões de doação.',
+  description: '',
 };
 
 export type ShirtSize =
@@ -70,6 +87,8 @@ export type PaymentStatus = 'pre_save' | 'pendente' | 'sinal' | 'pago' | 'entreg
 
 export interface ShirtOrder {
   id?: string;
+  productId?: string;
+  productName?: string;
   userId: string;
   userName: string;
   userPhone: string;
@@ -87,47 +106,83 @@ export interface ShirtOrder {
 }
 
 /**
- * Busca as configurações gerais da camisa oficial do grupo
+ * Verifica se o produto está visível para os membros solicitarem no app.
+ * Só aparece se estiver em 'pre_save' (e dentro do prazo, caso haja data limite) ou 'oficial'.
+ * Se estiver 'inativo' ou 'encomendado', NÃO aparece para os membros.
  */
-export async function fetchShirtConfig(supabase: SupabaseClient): Promise<ShirtConfig> {
+export function isProductVisibleToMembers(product: OfficialProduct): boolean {
+  if (product.phase === 'inativo' || product.phase === 'encomendado') {
+    return false;
+  }
+  if (product.phase === 'pre_save' && product.preSaveDeadline) {
+    // Verifica se a data limite do pré-save já passou (considerando fim do dia local)
+    const parts = product.preSaveDeadline.split('-');
+    if (parts.length === 3) {
+      const deadlineDate = new Date(
+        Number(parts[0]),
+        Number(parts[1]) - 1,
+        Number(parts[2]),
+        23,
+        59,
+        59
+      );
+      if (new Date() > deadlineDate) {
+        return false;
+      }
+    }
+  }
+  return product.phase === 'pre_save' || product.phase === 'oficial';
+}
+
+/**
+ * Formata uma data YYYY-MM-DD para DD/MM/AAAA
+ */
+export function formatDeadlineBR(dateStr?: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+/**
+ * Busca a lista de todos os produtos oficiais cadastrados pelo Admin
+ */
+export async function fetchOfficialProducts(
+  supabase: SupabaseClient
+): Promise<OfficialProduct[]> {
   try {
     const { data, error } = await supabase
       .from('donation_guides')
       .select('content')
-      .eq('title', SHIRT_CONFIG_KEY)
+      .eq('title', PRODUCTS_CATALOG_KEY)
       .order('created_at', { ascending: false })
       .limit(1);
 
-    if (error || !data || data.length === 0) {
-      return DEFAULT_SHIRT_CONFIG;
+    if (!error && data && data.length > 0) {
+      const parsed = JSON.parse(data[0].content);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
     }
-
-    const parsed = JSON.parse(data[0].content);
-    return {
-      ...DEFAULT_SHIRT_CONFIG,
-      ...parsed,
-    };
+    return [];
   } catch {
-    return DEFAULT_SHIRT_CONFIG;
+    return [];
   }
 }
 
 /**
- * Salva ou atualiza as configurações da camisa oficial (apenas ADM)
+ * Salva a lista completa de produtos oficiais no banco
  */
-export async function saveShirtConfig(
+export async function saveOfficialProducts(
   supabase: SupabaseClient,
-  config: Partial<ShirtConfig>
+  products: OfficialProduct[]
 ): Promise<boolean> {
   try {
-    const current = await fetchShirtConfig(supabase);
-    const updated: ShirtConfig = { ...current, ...config };
-    const payload = JSON.stringify(updated);
-
+    const payload = JSON.stringify(products);
     const { data: existing } = await supabase
       .from('donation_guides')
       .select('id')
-      .eq('title', SHIRT_CONFIG_KEY)
+      .eq('title', PRODUCTS_CATALOG_KEY)
       .limit(1);
 
     if (existing && existing.length > 0 && existing[0].id) {
@@ -139,7 +194,7 @@ export async function saveShirtConfig(
     } else {
       const { error } = await supabase
         .from('donation_guides')
-        .insert([{ title: SHIRT_CONFIG_KEY, content: payload }]);
+        .insert([{ title: PRODUCTS_CATALOG_KEY, content: payload }]);
       return !error;
     }
   } catch {
@@ -148,45 +203,30 @@ export async function saveShirtConfig(
 }
 
 /**
- * Busca o pedido de camisa de um usuário específico
+ * Busca os pedidos de um usuário (todos ou de um produto específico)
  */
-export async function fetchUserShirtOrder(
+export async function fetchUserProductOrders(
   supabase: SupabaseClient,
   userId: string
-): Promise<ShirtOrder | null> {
+): Promise<ShirtOrder[]> {
   try {
-    const titleKey = `${SHIRT_ORDER_PREFIX}${userId}`;
-    const { data, error } = await supabase
-      .from('donation_guides')
-      .select('id, content, created_at, updated_at')
-      .eq('title', titleKey)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (error || !data || data.length === 0) return null;
-
-    const row = data[0];
-    const parsed: ShirtOrder = JSON.parse(row.content);
-    return {
-      ...parsed,
-      id: row.id,
-      createdAt: parsed.createdAt || row.created_at,
-      updatedAt: parsed.updatedAt || row.updated_at,
-    };
+    const all = await fetchAllShirtOrders(supabase);
+    return all.filter((o) => o.userId === userId);
   } catch {
-    return null;
+    return [];
   }
 }
 
 /**
- * Salva ou atualiza a solicitação de camisa do usuário (no Pré-Save ou Oficial)
+ * Salva ou atualiza a solicitação de um produto oficial pelo usuário
  */
 export async function saveUserShirtOrder(
   supabase: SupabaseClient,
   orderData: Omit<ShirtOrder, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<ShirtOrder | null> {
   try {
-    const titleKey = `${SHIRT_ORDER_PREFIX}${orderData.userId}`;
+    const prodKey = orderData.productId ? `${orderData.productId}_` : '';
+    const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${orderData.userId}`;
     const now = new Date().toISOString();
 
     const { data: existing } = await supabase
@@ -235,14 +275,16 @@ export async function saveUserShirtOrder(
 }
 
 /**
- * Cancela a solicitação de camisa do usuário
+ * Cancela a solicitação de um produto específico do usuário
  */
 export async function cancelUserShirtOrder(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  productId?: string
 ): Promise<boolean> {
   try {
-    const titleKey = `${SHIRT_ORDER_PREFIX}${userId}`;
+    const prodKey = productId ? `${productId}_` : '';
+    const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${userId}`;
     const { error } = await supabase
       .from('donation_guides')
       .delete()
@@ -254,9 +296,33 @@ export async function cancelUserShirtOrder(
 }
 
 /**
- * Busca todos os pedidos de camisa cadastrados para o painel de gestão
+ * Limpa os pedidos de um produto específico (usado opcionalmente ao reabilitar um novo lote do zero)
  */
-export async function fetchAllShirtOrders(supabase: SupabaseClient): Promise<ShirtOrder[]> {
+export async function clearProductOrders(
+  supabase: SupabaseClient,
+  productId: string
+): Promise<boolean> {
+  try {
+    const orders = await fetchAllShirtOrders(supabase, productId);
+    const ids = orders.map((o) => o.id).filter(Boolean) as string[];
+    if (ids.length === 0) return true;
+    const { error } = await supabase
+      .from('donation_guides')
+      .delete()
+      .in('id', ids);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Busca todos os pedidos de produtos oficiais (filtrando opcionalmente por productId)
+ */
+export async function fetchAllShirtOrders(
+  supabase: SupabaseClient,
+  productId?: string
+): Promise<ShirtOrder[]> {
   try {
     const { data, error } = await supabase
       .from('donation_guides')
@@ -270,15 +336,19 @@ export async function fetchAllShirtOrders(supabase: SupabaseClient): Promise<Shi
     for (const row of data) {
       try {
         const parsed: ShirtOrder = JSON.parse(row.content);
-        const userId = row.title.replace(SHIRT_ORDER_PREFIX, '').trim();
+        const suffix = row.title.replace(SHIRT_ORDER_PREFIX, '').trim();
         orders.push({
           ...parsed,
           id: row.id,
-          userId: parsed.userId || userId,
+          userId: parsed.userId || suffix,
           createdAt: parsed.createdAt || row.created_at,
           updatedAt: parsed.updatedAt || row.updated_at,
         });
       } catch {}
+    }
+
+    if (productId) {
+      return orders.filter((o) => o.productId === productId);
     }
 
     return orders;
@@ -288,7 +358,7 @@ export async function fetchAllShirtOrders(supabase: SupabaseClient): Promise<Shi
 }
 
 /**
- * Atualiza o status de pagamento e valor pago de um pedido específico (pelo Super Admin)
+ * Atualiza o status de pagamento e valor pago de um pedido específico (pelo Admin)
  */
 export async function updateShirtOrderStatus(
   supabase: SupabaseClient,
