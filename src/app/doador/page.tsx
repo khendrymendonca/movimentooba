@@ -15,6 +15,7 @@ import {
   Share2,
   LifeBuoy,
   Globe,
+  Shirt,
 } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
@@ -30,6 +31,13 @@ import {
   DEFAULT_PROJECT_CONFIG,
   ProjectConfig,
 } from '@/lib/campaigns';
+import {
+  fetchShirtConfig,
+  fetchUserShirtOrder,
+  ShirtConfig,
+  ShirtOrder,
+  DEFAULT_SHIRT_CONFIG,
+} from '@/lib/shirtOrders';
 import {
   checkEligibilityForDate,
   GroupCampaign,
@@ -57,6 +65,8 @@ export default function DoadorHome() {
   const [config, setConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [selectedSupportModal, setSelectedSupportModal] = useState<SupportCampaign | null>(null);
+  const [shirtConfig, setShirtConfig] = useState<ShirtConfig>(DEFAULT_SHIRT_CONFIG);
+  const [shirtOrder, setShirtOrder] = useState<ShirtOrder | null>(null);
   const supabase = createClient();
 
   async function loadAll() {
@@ -83,15 +93,27 @@ export default function DoadorHome() {
       }
     }
 
-    const [{ data: newsData }, loadedCampaigns, loadedSupport, loadedConfig, loadedNotifs] = await Promise.all([
+    const [
+      { data: newsData },
+      loadedCampaigns,
+      loadedSupport,
+      loadedConfig,
+      loadedNotifs,
+      loadedShirtConfig,
+      loadedUserOrder,
+    ] = await Promise.all([
       supabase.from('news').select('*').order('created_at', { ascending: false }),
       fetchGroupCampaigns(supabase, userId),
       fetchSupportCampaigns(supabase),
       fetchProjectConfig(supabase),
       fetchUnifiedNotifications(supabase, currentProfile || undefined),
+      fetchShirtConfig(supabase),
+      userId ? fetchUserShirtOrder(supabase, userId) : Promise.resolve(null),
     ]);
 
     if (newsData) setFeed(newsData);
+    if (loadedShirtConfig) setShirtConfig(loadedShirtConfig);
+    if (loadedUserOrder) setShirtOrder(loadedUserOrder);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -315,6 +337,57 @@ export default function DoadorHome() {
                   : 'Hoje'}
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* BANNER DA CAMISA OFICIAL DO MOVIMENTO */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-5 border border-slate-700/60 shadow-sm relative overflow-hidden">
+          <div className="flex items-start justify-between gap-3 relative z-10">
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider">
+                <Shirt size={12} />
+                Camisa Oficial
+              </div>
+              <h3 className="text-sm sm:text-base font-bold tracking-tight text-white">
+                Camisa Oficial do Movimento
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed font-normal">
+                {shirtOrder
+                  ? `Seu pedido: Tamanho ${shirtOrder.size} • ${shirtOrder.quantity} un. (${
+                      shirtOrder.paymentStatus === 'pago'
+                        ? 'Quitado'
+                        : shirtOrder.paymentStatus === 'sinal'
+                        ? `Sinal Pago: R$ ${shirtOrder.amountPaid?.toFixed(2).replace('.', ',')}`
+                        : 'Aguardando Pagamento'
+                    })`
+                  : `Vista a camisa nos mutirões! Encomende a sua por apenas R$ ${(
+                      shirtConfig?.price || 45
+                    )
+                      .toFixed(2)
+                      .replace('.', ',')}.`}
+              </p>
+            </div>
+
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border border-white/20 bg-black/40 shrink-0">
+              <img
+                src={shirtConfig?.imageUrl || DEFAULT_SHIRT_CONFIG.imageUrl}
+                alt="Camisa Oficial"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+
+          <div className="pt-3 mt-3 border-t border-white/10 flex items-center justify-between gap-3 relative z-10">
+            <span className="text-xs text-slate-300 font-medium">
+              R$ {(shirtConfig?.price || 45).toFixed(2).replace('.', ',')} / unidade
+            </span>
+            <Link
+              href="/doador/camisa"
+              className="px-4 py-2 rounded-full bg-white hover:bg-slate-100 text-slate-900 text-xs font-semibold transition-colors flex items-center gap-1 shadow-xs"
+            >
+              <span>{shirtOrder ? 'Ver Meu Pedido' : 'Solicitar Camisa'}</span>
+              <span>→</span>
+            </Link>
           </div>
         </div>
 

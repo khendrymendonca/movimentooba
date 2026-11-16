@@ -13,6 +13,7 @@ import {
   Award,
   Heart,
   LifeBuoy,
+  Shirt,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -78,6 +79,16 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               >
                 <Users size={18} strokeWidth={2} />
                 <span>Membros & Cartões</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/dashboard/camisas"
+                className={getLinkClass('/dashboard/camisas')}
+                onClick={onClose}
+              >
+                <Shirt size={18} strokeWidth={2} />
+                <span>Camisas Oficiais</span>
               </Link>
             </li>
             <li>
