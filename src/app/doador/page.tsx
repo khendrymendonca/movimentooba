@@ -209,41 +209,41 @@ export default function DoadorHome() {
 
   return (
     <div className="flex flex-col min-h-full">
-      {/* Header com Saudação e Sino de Notificações */}
-      <div className="px-6 pt-8 pb-5 bg-white/90 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100 flex justify-between items-center">
-        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+      {/* Header com Saudação e Sino de Notificações (Totalmente responsivo em qualquer celular) */}
+      <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-4 bg-white/90 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100 flex justify-between items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
           {profile?.avatar_url ? (
             <Image
               src={profile.avatar_url}
               alt="Foto"
-              width={48}
-              height={48}
-              className="w-12 h-12 rounded-full object-cover border-2 border-red-100 shadow-sm shrink-0"
+              width={44}
+              height={44}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-red-100 shadow-sm shrink-0"
             />
           ) : (
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-semibold text-lg border-2 border-red-200 shadow-sm shrink-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-semibold text-base sm:text-lg border-2 border-red-200 shadow-sm shrink-0">
               {firstName.charAt(0) || '?'}
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold text-slate-900 tracking-tight leading-tight truncate">
+            <h1 className="text-base sm:text-xl font-semibold text-slate-900 tracking-tight leading-tight">
               Olá, {firstName}
             </h1>
-            <p className="text-xs text-slate-500 font-normal truncate">
+            <p className="text-[11px] sm:text-xs text-slate-500 font-normal truncate">
               {profile?.blood_type ? `Tipo ${profile.blood_type}` : 'Doador Voluntário'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Central de Apoio & Chamados */}
           <Link
             href="/doador/apoio"
             title="Central de Apoio & Chamados"
             aria-label="Central de Apoio"
-            className="p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+            className="p-2 sm:p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
           >
-            <LifeBuoy size={18} />
+            <LifeBuoy size={17} />
           </Link>
 
           {/* Sino de Notificações com Badge */}
@@ -251,22 +251,25 @@ export default function DoadorHome() {
             type="button"
             onClick={handleOpenNotifications}
             aria-label="Abrir notificações"
-            className="relative p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+            className="relative p-2 sm:p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
           >
-            <Bell size={18} />
+            <Bell size={17} />
             {hasUnreadNotifs && (
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-white ring-1 ring-red-400 animate-pulse" />
+              <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-white ring-1 ring-red-400 animate-pulse" />
             )}
           </button>
 
+          {/* Canal no WhatsApp */}
           <a
             href={config.whatsappGroupUrl || WHATSAPP_CHANNEL_URL}
             target="_blank"
             rel="noreferrer"
-            className="px-3 py-2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium flex items-center gap-1.5 hover:bg-emerald-100 transition-colors"
+            title="Canal no WhatsApp"
+            aria-label="Canal no WhatsApp"
+            className="p-2 sm:px-3 sm:py-2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium flex items-center gap-1.5 hover:bg-emerald-100 transition-colors"
           >
-            <MessageCircle size={15} />
-            Canal
+            <MessageCircle size={17} />
+            <span className="hidden sm:inline">Canal</span>
           </a>
         </div>
       </div>
