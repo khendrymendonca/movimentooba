@@ -13,7 +13,7 @@
 ## 2. Regras de Negócio e Comportamento
 - **Menu Suspenso de Filtros:** Permite filtrar rapidamente por:
   - `Todos os membros`
-  - `Aptos para doar (60d/120d)`
+  - `Aptos para doar (60d/90d)`
   - `Em intervalo biológico`
   - `Carteirinha pendente/revogada`
   - `Com Solicitação / Bug` (exibe membros que enviaram chamados pela tela Meu Perfil).
@@ -39,3 +39,4 @@
 | 12/11/2026 | Regra & Limpeza | Remoção de validade da carteirinha e do select de renovação; gestão simplificada em Ativar / Desativar membro. Bloqueio estrito de doações fora do intervalo ou extrapolando o limite da janela de 12 meses usando `validateNewDonation`. Impressão A4 padronizada com identidade visual corporativa oficial. | Antigravity |
 | 12/11/2026 | Gestão de Medalhas Especiais | Adição de controles no modal do membro para habilitar/desabilitar com 1 clique a medalha de Membro Fundador (2026), medalhas personalizadas por cada mutirão cadastrado e medalha de Herói da Rede SOS. Inclusão de botão de concessão de Membro Fundador em lote na barra de seleção múltipla. | Antigravity |
 | 12/11/2026 | UI Refinamento | Remoção da tag de medalha dos cards móveis da lista de membros para manter o layout limpo; as medalhas são visualizadas e gerenciadas exclusivamente dentro do modal ao clicar em Gerenciar. | Antigravity |
+| 16/11/2026 | Regra Oficial Intervalo Biológico | Atualização dos filtros e badges de membros para refletir o intervalo oficial feminino de 90 dias (60d homens / 90d mulheres, máx 4 e 3 doações/ano). | Antigravity |

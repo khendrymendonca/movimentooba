@@ -353,7 +353,7 @@ export default function PerfilDoador() {
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-slate-400 bg-slate-50/50 text-slate-900 text-xs font-normal"
               >
                 <option value="M">Masculino (60d)</option>
-                <option value="F">Feminino (120d)</option>
+                <option value="F">Feminino (90d)</option>
               </select>
             </div>
 

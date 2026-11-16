@@ -14,7 +14,7 @@
 ## 2. Regras de Negócio e Comportamento
 - **Padronização Universal:** Esta tela é 100% idêntica para qualquer usuário logado (`/doador/perfil` e `/dashboard/perfil` renderizam exatamente o mesmo componente).
 - **Foto 3x4 para a Carteirinha:** Upload validado (`validateSafeUpload`) salvo em `${user.id}/avatar.${ext}` no bucket `avatars`, refletindo imediatamente na Carteirinha Digital.
-- **Dados Pessoais:** Edição de Nome Completo, Data de Nascimento, Sexo Biológico (`M` 60 dias / `F` 120 dias) e Tipo Sanguíneo (`A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`).
+- **Dados Pessoais:** Edição de Nome Completo, Data de Nascimento, Sexo Biológico (`M` 60 dias / `F` 90 dias) e Tipo Sanguíneo (`A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`).
 - **Segurança e Acesso:**
   - **Alterar E-mail:** Utiliza `supabase.auth.updateUser({ email })` com disparo de confirmação.
   - **Alterar Senha:** Utiliza `supabase.auth.updateUser({ password })` validando confirmação e mínimo de 6 caracteres.
@@ -36,3 +36,4 @@
 | 11/11/2026 | UI, Segurança & Suporte | Unificação total do Meu Perfil (sem "Coordenação"), adição de alteração de E-mail e Senha, seletor de Tipo Sanguíneo/Sexo e envio persistente de Solicitações/Bugs para o painel de membros. | Antigravity |
 | 13/11/2026 | Upload e Ajuste Livre de Fotos | Redesenho completo do componente `ImageCropperModal`: eliminação do zoom excessivo em fotos de alta resolução (ancoragem proporcional com escala `contain`), controle de zoom ampliado de 0.5x a 3.5x com suporte a pinch-to-zoom no celular, seletor de proporção livre pelo usuário (Original/Livre, 1:1 Quadrado e 3:4 Carteirinha), remoção de máscara artificial de rosto e adição de botão direto "Usar Foto Inteira" sem corte forçado. | Antigravity |
 | 16/11/2026 | UI e Visibilidade de Botões | Otimização do modal de recorte (`ImageCropperModal`): botões de ação com o texto direto "Salvar Foto" e garantia de visibilidade contínua em mobile (botão adicional "Salvar Foto" no cabeçalho superior e rodapé flexível com `shrink-0`), eliminação de estouro de tela com redimensionamento dinâmico e remoção de textos explicativos extensos na tela de perfil e no modal. | Antigravity |
+| 16/11/2026 | Regra Oficial Intervalo Biológico | Atualização da opção de sexo biológico feminino de 120d para 90d (`Feminino (90d)`), em conformidade com as diretrizes hemoterápicas oficiais. | Antigravity |

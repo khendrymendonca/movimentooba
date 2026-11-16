@@ -103,7 +103,7 @@ const MALE_ANNUAL_BADGES: AnnualBadgeConfig[] = [
   },
 ];
 
-// 3 Jóias por ano para Mulheres (Intervalo de 120 dias - máximo 3 doações/ano)
+// 3 Jóias por ano para Mulheres (Intervalo de 90 dias - máximo 3 doações/ano)
 const FEMALE_ANNUAL_BADGES: AnnualBadgeConfig[] = [
   {
     order: 1,

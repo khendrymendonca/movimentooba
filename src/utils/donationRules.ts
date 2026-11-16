@@ -82,10 +82,10 @@ export function canDonateBlood(donorType?: string | null, recipientType?: string
 
 /**
  * Retorna o intervalo mínimo obrigatório em dias entre doações conforme o sexo biológico.
- * Regra do projeto: Homens = 60 dias | Mulheres = 120 dias.
+ * Regra oficial: Homens = 60 dias (máx 4/ano) | Mulheres = 90 dias (máx 3/ano).
  */
 export function getDonationIntervalDays(sex?: Sex | string | null): number {
-  return sex === 'M' ? 60 : 120;
+  return sex === 'M' ? 60 : 90;
 }
 
 /**
@@ -108,7 +108,7 @@ export interface DonationValidationResult {
 /**
  * Valida se uma doação pode ser registrada na data proposta, respeitando rigorosamente:
  * 1. Data válida (não no futuro, não repetida no mesmo dia).
- * 2. Intervalo mínimo obrigatório entre doações consecutivas (60 dias p/ homens, 120 dias p/ mulheres).
+ * 2. Intervalo mínimo obrigatório entre doações consecutivas (60 dias p/ homens, 90 dias p/ mulheres).
  * 3. Limite máximo de doações em uma janela deslizante de 12 meses (4 p/ homens, 3 p/ mulheres).
  *    Ex: Se doou em Julho, o ciclo dessa doação só vira em Julho do ano seguinte.
  */
@@ -174,7 +174,7 @@ export function validateNewDonation(
       nextDate.setDate(nextDate.getDate() + intervalDays);
       return {
         allowed: false,
-        reason: `Intervalo mínimo obrigatório não atingido. Para o seu perfil (${sex === 'F' ? 'Feminino - 120 dias' : 'Masculino - 60 dias'}), a próxima data permitida após ${previousDonation.toLocaleDateString('pt-BR')} é ${nextDate.toLocaleDateString('pt-BR')} (faltam ${intervalDays - diffDays} dias).`,
+        reason: `Intervalo mínimo obrigatório não atingido. Para o seu perfil (${sex === 'F' ? 'Feminino - 90 dias' : 'Masculino - 60 dias'}), a próxima data permitida após ${previousDonation.toLocaleDateString('pt-BR')} é ${nextDate.toLocaleDateString('pt-BR')} (faltam ${intervalDays - diffDays} dias).`,
         nextAllowedDate: nextDate,
         donationsInWindow: 0,
         maxAllowedInWindow: maxPerYear,
@@ -272,7 +272,7 @@ export function formatSafeDate(dateInput?: Date | string | null): string {
 
 /**
  * Calcula a data da próxima doação permitida considerando a última doação e o sexo biológico.
- * Homens: +60 dias. Mulheres: +120 dias.
+ * Homens: +60 dias. Mulheres: +90 dias.
  */
 export function calculateNextDonationDate(sex?: Sex | string | null, lastDonationDate?: Date | string | null): Date | null {
   const baseDate = parseSafeDate(lastDonationDate);

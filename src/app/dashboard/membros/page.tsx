@@ -254,7 +254,7 @@ export default function Membros() {
               className="w-full appearance-none pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400 bg-white text-slate-700 text-xs sm:text-sm font-normal cursor-pointer transition-colors hover:border-slate-300"
             >
               <option value="todos">Todos os membros</option>
-              <option value="aptos">Aptos para doar (60d/120d)</option>
+              <option value="aptos">Aptos para doar (60d/90d)</option>
               <option value="intervalo">Em intervalo biológico</option>
               <option value="pendentes">Carteirinha pendente/revogada</option>
               <option value="chamados">Com Solicitação / Bug</option>
@@ -312,7 +312,7 @@ export default function Membros() {
                           )}
                         </h3>
                         <p className="text-xs text-slate-600 mt-0.5 font-normal">
-                          {membro.sex === 'F' ? 'Feminino (120d)' : 'Masculino (60d)'} •{' '}
+                          {membro.sex === 'F' ? 'Feminino (90d)' : 'Masculino (60d)'} •{' '}
                           {membro.is_active ? 'Ativo' : 'Inativo'}
                         </p>
                       </div>
@@ -428,7 +428,7 @@ export default function Membros() {
                               )}
                             </div>
                             <div className="text-xs text-slate-600 font-normal">
-                              {membro.sex === 'F' ? 'Feminino (120d)' : 'Masculino (60d)'} •{' '}
+                              {membro.sex === 'F' ? 'Feminino (90d)' : 'Masculino (60d)'} •{' '}
                               {membro.is_active ? 'Ativo' : 'Inativo'}
                             </div>
                           </div>
@@ -489,7 +489,7 @@ export default function Membros() {
                 </h2>
                 <p className="text-xs text-slate-600 font-normal">
                   {editingMembro.blood_type || 'Sangue não inf.'} •{' '}
-                  {editingMembro.sex === 'F' ? 'Feminino (120d)' : 'Masculino (60d)'}
+                  {editingMembro.sex === 'F' ? 'Feminino (90d)' : 'Masculino (60d)'}
                 </p>
               </div>
               <button

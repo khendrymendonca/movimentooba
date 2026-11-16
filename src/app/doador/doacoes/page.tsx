@@ -306,7 +306,7 @@ export default function DoacoesDoador() {
           )}
         </div>
 
-        {/* Simulador de Próximas Datas Individuais (60d Homem / 120d Mulher) */}
+        {/* Simulador de Próximas Datas Individuais (60d Homem / 90d Mulher) */}
         <div className="bg-slate-50 rounded-3xl p-5 border border-slate-100">
           <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest mb-3">
             Suas Próximas Janelas de Doação ({intervalDays} em {intervalDays} dias)
