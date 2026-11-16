@@ -83,9 +83,9 @@ export default function DoadorProdutoOficialPage() {
           fetchProjectConfig(supabase),
           supabase
             .from('profiles')
-            .select('id, name, phone, blood_type, role')
+            .select('*')
             .eq('id', userId)
-            .single(),
+            .maybeSingle(),
           fetchUserProductOrders(supabase, userId),
         ]);
 
@@ -112,15 +112,13 @@ export default function DoadorProdutoOficialPage() {
         }
       }
 
-      if (profileData) {
-        setUserProfile({
-          id: profileData.id,
-          name: profileData.name || '',
-          phone: profileData.phone || '',
-          email: session.user.email || '',
-          blood_type: profileData.blood_type,
-        });
-      }
+      setUserProfile({
+        id: profileData?.id || userId,
+        name: profileData?.name || session.user.user_metadata?.name || session.user.email || 'Membro',
+        phone: profileData?.phone || profileData?.whatsapp || '',
+        email: session.user.email || '',
+        blood_type: profileData?.blood_type,
+      });
 
       setLoading(false);
     }
@@ -204,8 +202,8 @@ export default function DoadorProdutoOficialPage() {
       setFeedback({
         type: 'success',
         msg: isPreSave
-          ? 'Pré-Save registrado com sucesso! Quando tivermos o preço final, avisaremos no app.'
-          : 'Solicitação registrada com sucesso! Veja os dados de pagamento abaixo.',
+          ? 'Pré-Save registrado! Assim que o valor estiver disponível será informado, e a encomenda só estará efetivamente realizada após o pagamento do sinal.'
+          : 'Solicitação registrada! A encomenda só estará efetivamente realizada após o pagamento do sinal.',
       });
     } else {
       setFeedback({
@@ -231,22 +229,6 @@ export default function DoadorProdutoOficialPage() {
         msg: 'Sua solicitação foi cancelada.',
       });
     }
-  };
-
-  const coordinatorWhatsappLink = () => {
-    if (!activeProduct) return null;
-    const rawPhone = (projectConfig.hemocenterPhone || '').replace(/\D/g, '');
-    if (!rawPhone) return projectConfig.whatsappGroupUrl || null;
-    const text = isPreSave
-      ? `Olá! Acabei de registrar meu Pré-Save de "${activeProduct.name}" (${quantity} un.${
-          activeProduct.hasSizes ? `, Tam. ${selectedSize}` : ''
-        }) no aplicativo.`
-      : `Olá! Solicitei "${activeProduct.name}" (${quantity} un.${
-          activeProduct.hasSizes ? `, Tam. ${selectedSize}` : ''
-        } - Total R$ ${totalPrice
-          .toFixed(2)
-          .replace('.', ',')}) pelo aplicativo e gostaria de enviar o comprovante.`;
-    return `https://api.whatsapp.com/send?phone=55${rawPhone}&text=${encodeURIComponent(text)}`;
   };
 
   if (loading) {
@@ -367,6 +349,10 @@ export default function DoadorProdutoOficialPage() {
                     {activeProduct.description}
                   </p>
                 )}
+
+                <p className="text-[11px] text-amber-800 bg-amber-50/80 border border-amber-200/80 rounded-xl px-3 py-2 font-normal leading-relaxed mt-2">
+                  Assim que o valor estiver disponível será informado, e a encomenda só estará efetivamente realizada após o pagamento do sinal.
+                </p>
               </div>
             </div>
 
@@ -530,18 +516,6 @@ export default function DoadorProdutoOficialPage() {
                     </button>
                   )}
                 </div>
-
-                {coordinatorWhatsappLink() && (
-                  <a
-                    href={coordinatorWhatsappLink()!}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <MessageCircle size={15} />
-                    <span>Falar com a Coordenação no WhatsApp</span>
-                  </a>
-                )}
               </div>
             ) : (
               /* FORMULÁRIO DE SOLICITAÇÃO / PRÉ-SAVE */

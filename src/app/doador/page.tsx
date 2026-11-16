@@ -519,18 +519,26 @@ export default function DoadorHome() {
           </div>
         )}
 
-        {/* Próximas Doações em Massa do Grupo (Mutirões com Confirmação de Presença até 20 vagas) */}
+        {/* Próximo Mutirão de Doação em Grupo (Apenas o mais próximo na tela inicial) */}
         {campaigns.length > 0 && (
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
                 <HeartHandshake size={16} className="text-red-500" />
-                Mutirões de Doação em Grupo
+                Próximo Mutirão de Doação
               </h2>
+              {campaigns.length > 1 && (
+                <Link
+                  href="/doador/doacoes"
+                  className="text-xs text-slate-600 hover:text-slate-900 font-normal"
+                >
+                  Ver todos ({campaigns.length}) →
+                </Link>
+              )}
             </div>
 
             <div className="space-y-3">
-              {campaigns.map((camp) => {
+              {campaigns.slice(0, 1).map((camp) => {
                 const campDateObj = parseSafeDate(camp.campaign_date);
                 const eligibilityOnCampaign = checkEligibilityForDate(
                   userSex,

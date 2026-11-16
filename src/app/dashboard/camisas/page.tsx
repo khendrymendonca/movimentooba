@@ -94,7 +94,7 @@ export default function DashboardProdutosOficiaisPage() {
       fetchAllShirtOrders(supabase),
       supabase
         .from('profiles')
-        .select('id, name, phone, blood_type, is_active, avatar_url')
+        .select('*')
         .order('name', { ascending: true }),
     ]);
 
@@ -370,12 +370,13 @@ export default function DashboardProdutosOficiaisPage() {
     status: ShirtOrder['paymentStatus'],
     amount: number
   ) => {
-    if (!order.id) return;
-    const ok = await updateShirtOrderStatus(supabase, order.id, status, amount);
+    const ok = await updateShirtOrderStatus(supabase, order, status, amount);
     if (ok) {
       setAllOrders((prev) =>
         prev.map((o) =>
-          o.id === order.id ? { ...o, paymentStatus: status, amountPaid: amount } : o
+          o.userId === order.userId && (o.productId || 'default') === (order.productId || 'default')
+            ? { ...o, paymentStatus: status, amountPaid: amount }
+            : o
         )
       );
       setSignalModalOrder(null);
@@ -844,51 +845,23 @@ export default function DashboardProdutosOficiaisPage() {
                         Nenhum membro encontrado.
                       </div>
                     ) : (
-                      filteredMembersWithoutOrder.map((m) => {
-                        const cleanPhone = (m.phone || '').replace(/\D/g, '');
-                        const waUrl = cleanPhone
-                          ? `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodeURIComponent(
-                              `Olá, ${
-                                m.name ? m.name.split(' ')[0] : 'amigo'
-                              }! Estamos organizando os pedidos de "${
-                                activeProduct.name
-                              }" do Movimento O Bom Amigo no aplicativo. Acesse lá para garantir o seu!`
-                            )}`
-                          : null;
-
-                        return (
-                          <div
-                            key={m.id}
-                            className="p-3.5 flex items-center justify-between gap-3"
-                          >
-                            <div className="min-w-0">
-                              <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
-                                {m.name}
-                              </h4>
+                      filteredMembersWithoutOrder.map((m) => (
+                        <div
+                          key={m.id}
+                          className="p-3.5 flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
+                              {m.name}
+                            </h4>
+                            {m.blood_type && (
                               <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                                {m.blood_type ? `Tipo ${m.blood_type}` : 'Membro'} •{' '}
-                                {m.phone || 'Sem telefone'}
+                                Tipo {m.blood_type}
                               </p>
-                            </div>
-
-                            <div>
-                              {waUrl ? (
-                                <a
-                                  href={waUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
-                                >
-                                  <MessageCircle size={14} />
-                                  <span>Avisar</span>
-                                </a>
-                              ) : (
-                                <span className="text-[11px] text-slate-400">Sem WhatsApp</span>
-                              )}
-                            </div>
+                            )}
                           </div>
-                        );
-                      })
+                        </div>
+                      ))
                     )}
                   </div>
                 ) : (
@@ -899,37 +872,12 @@ export default function DashboardProdutosOficiaisPage() {
                       </div>
                     ) : (
                       filteredOrders.map((order) => {
-                        const cleanPhone = (order.userPhone || '').replace(/\D/g, '');
                         const effectiveUnit =
                           order.unitPrice > 0 ? order.unitPrice : activeProduct.price;
                         const effectiveTotal =
                           order.totalPrice > 0
                             ? order.totalPrice
                             : (order.quantity || 1) * effectiveUnit;
-
-                        const waMessage = isPreSave
-                          ? `Olá, ${
-                              order.userName.split(' ')[0]
-                            }! Tudo bem? Seu Pré-Save de "${activeProduct.name}" (${
-                              order.quantity
-                            } un.) está registrado. Assim que fecharmos o preço final te avisamos!`
-                          : `Olá, ${
-                              order.userName.split(' ')[0]
-                            }! Tudo bem? O valor oficial de "${
-                              activeProduct.name
-                            }" ficou em R$ ${effectiveUnit
-                              .toFixed(2)
-                              .replace('.', ',')} por unidade (Total: R$ ${effectiveTotal
-                              .toFixed(2)
-                              .replace('.', ',')}). Chave PIX para sinal ou quitação: ${
-                              activeProduct.pixKey
-                            } (${activeProduct.pixReceiver}).`;
-
-                        const waUrl = cleanPhone
-                          ? `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodeURIComponent(
-                              waMessage
-                            )}`
-                          : null;
 
                         return (
                           <div
@@ -946,20 +894,6 @@ export default function DashboardProdutosOficiaisPage() {
                                     <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 font-bold text-[10px]">
                                       {order.userBloodType}
                                     </span>
-                                  )}
-                                </div>
-
-                                <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-                                  <span>{order.userPhone || 'Sem telefone'}</span>
-                                  {waUrl && (
-                                    <a
-                                      href={waUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-emerald-600 hover:text-emerald-700 font-medium inline-flex items-center gap-0.5"
-                                    >
-                                      <MessageCircle size={12} /> WhatsApp
-                                    </a>
                                   )}
                                 </div>
                               </div>

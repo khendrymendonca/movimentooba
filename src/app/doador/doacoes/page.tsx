@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   HeartHandshake,
   Trash2,
+  Users,
 } from 'lucide-react';
 import {
   calculateNextDonationDate,
@@ -22,7 +23,12 @@ import {
   parseSafeDate,
   validateNewDonation,
 } from '@/utils/donationRules';
-import { fetchGroupCampaigns, syncGlobalDonationsCount } from '@/lib/campaigns';
+import {
+  fetchGroupCampaigns,
+  syncGlobalDonationsCount,
+  toggleCampaignConfirmation,
+  MAX_CAMPAIGN_PARTICIPANTS,
+} from '@/lib/campaigns';
 
 export default function DoacoesDoador() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -30,6 +36,7 @@ export default function DoacoesDoador() {
   const [campaigns, setCampaigns] = useState<GroupCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
@@ -53,7 +60,7 @@ export default function DoacoesDoador() {
         .select('*')
         .eq('profile_id', session.user.id)
         .order('donation_date', { ascending: false }),
-      fetchGroupCampaigns(supabase),
+      fetchGroupCampaigns(supabase, session.user.id),
     ]);
 
     setUserProfile(profile);
@@ -61,15 +68,38 @@ export default function DoacoesDoador() {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    setCampaigns(
-      loadedCampaigns.filter((c) => {
-        const d = parseSafeDate(c.campaign_date);
-        return d && d >= today;
-      })
-    );
+    const upcoming = loadedCampaigns.filter((c) => {
+      const d = parseSafeDate(c.campaign_date);
+      return d && d >= today;
+    });
+    setCampaigns(upcoming.length > 0 ? upcoming : loadedCampaigns);
 
     setLoading(false);
   }
+
+  const handleToggleRsvp = async (camp: GroupCampaign) => {
+    if (!userProfile?.id || !camp.id) return;
+    setConfirmingId(camp.id);
+    const res = await toggleCampaignConfirmation(
+      supabase,
+      camp.id,
+      { id: userProfile.id, name: userProfile.name || 'Doador' },
+      Boolean(camp.user_confirmed)
+    );
+    if (res.ok) {
+      const refreshed = await fetchGroupCampaigns(supabase, userProfile.id);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const upcoming = refreshed.filter((c) => {
+        const d = parseSafeDate(c.campaign_date);
+        return d && d >= today;
+      });
+      setCampaigns(upcoming.length > 0 ? upcoming : refreshed);
+    } else if (res.error) {
+      setFeedback({ type: 'error', msg: res.error });
+    }
+    setConfirmingId(null);
+  };
 
   const syncProfileDates = async (updatedDonations: any[], profile: any) => {
     const latestDateStr = updatedDonations.length > 0 ? updatedDonations[0].donation_date : null;
@@ -332,14 +362,14 @@ export default function DoacoesDoador() {
           </div>
         </div>
 
-        {/* Compatibilidade com as Próximas Doações em Massa do Grupo */}
+        {/* Todos os Próximos Mutirões do Grupo (Com Confirmação de Presença) */}
         {campaigns.length > 0 && (
           <div>
             <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3 px-1 flex items-center gap-1.5">
               <HeartHandshake size={15} className="text-red-500" />
-              Datas das Doações em Massa do Grupo
+              Mutirões de Doação em Grupo ({campaigns.length})
             </h2>
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {campaigns.map((camp) => {
                 const check = checkEligibilityForDate(
                   userSex,
@@ -347,27 +377,79 @@ export default function DoacoesDoador() {
                   camp.campaign_date
                 );
                 const dObj = parseSafeDate(camp.campaign_date);
+                const maxLimit = camp.max_participants || MAX_CAMPAIGN_PARTICIPANTS;
+                const confirmedCount = camp.confirmed_count || 0;
+                const isFull = confirmedCount >= maxLimit;
+                const isUserConfirmed = Boolean(camp.user_confirmed);
+
                 return (
                   <div
                     key={camp.id}
-                    className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between gap-3"
+                    className="p-4 rounded-2xl border border-slate-200/80 bg-white space-y-3"
                   >
-                    <div>
-                      <p className="text-xs font-extrabold text-slate-900">{camp.title}</p>
-                      <p className="text-[11px] text-slate-500">
-                        {dObj ? dObj.toLocaleDateString('pt-BR') : camp.campaign_date} •{' '}
-                        {camp.location}
-                      </p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs sm:text-sm font-semibold text-slate-900">
+                          {dObj
+                            ? dObj.toLocaleDateString('pt-BR', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                            : camp.campaign_date}
+                          {camp.campaign_time ? ` às ${camp.campaign_time}` : ''}
+                        </p>
+                        <p className="text-xs text-slate-600 font-normal">
+                          {camp.title} • {camp.location}
+                        </p>
+                      </div>
+                      {check.isEligible ? (
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold flex items-center gap-1 shrink-0">
+                          <CheckCircle2 size={12} /> Apto na data
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold flex items-center gap-1 shrink-0">
+                          <Clock size={12} /> Em intervalo
+                        </span>
+                      )}
                     </div>
-                    {check.isEligible ? (
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-extrabold flex items-center gap-1 shrink-0">
-                        <CheckCircle2 size={12} /> Você pode ir!
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] font-extrabold flex items-center gap-1 shrink-0">
-                        <Clock size={12} /> Em pausa ({check.daysRemaining}d)
-                      </span>
-                    )}
+
+                    <div className="pt-2.5 border-t border-slate-100 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-600 flex items-center gap-1.5 font-normal">
+                          <Users size={14} className="text-slate-400" />
+                          Confirmados no mutirão:{' '}
+                          <strong className="font-medium text-slate-900">
+                            {confirmedCount}/{maxLimit}
+                          </strong>
+                        </span>
+
+                        {isUserConfirmed && (
+                          <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-normal">
+                            Presença confirmada
+                          </span>
+                        )}
+                      </div>
+
+                      {(!isFull || isUserConfirmed) && (
+                        <button
+                          type="button"
+                          disabled={confirmingId === camp.id}
+                          onClick={() => handleToggleRsvp(camp)}
+                          className={`w-full py-2 px-4 rounded-xl text-xs font-normal transition-colors flex items-center justify-center gap-1.5 ${
+                            isUserConfirmed
+                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                              : 'bg-red-600 hover:bg-red-700 text-white'
+                          } disabled:opacity-50`}
+                        >
+                          {confirmingId === camp.id
+                            ? 'Atualizando...'
+                            : isUserConfirmed
+                            ? 'Cancelar minha confirmação'
+                            : 'Confirmar presença neste mutirão'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

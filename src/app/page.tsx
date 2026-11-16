@@ -195,7 +195,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Próximas Datas de Doação do Grupo (Sutil e Institucional) */}
+        {/* Próxima Data de Doação do Grupo (Apenas o próximo mutirão na tela inicial) */}
         {campaigns.length > 0 && (
           <section className="py-14 bg-white border-t border-slate-100">
             <div className="max-w-5xl mx-auto px-6 text-center">
@@ -203,11 +203,11 @@ export default function LandingPage() {
                 Agenda do Movimento
               </span>
               <h2 className="text-2xl sm:text-3xl font-semibold text-slate-900 mt-1 mb-8">
-                Próximas Doações em Grupo
+                Próximo Mutirão de Doação
               </h2>
 
               <div className="flex flex-wrap justify-center gap-4">
-                {campaigns.map((camp) => {
+                {campaigns.slice(0, 1).map((camp) => {
                   const dateObj = parseSafeDate(camp.campaign_date);
                   const maxLimit = camp.max_participants || 20;
                   const confirmedCount = camp.confirmed_count || 0;

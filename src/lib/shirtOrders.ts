@@ -107,15 +107,12 @@ export interface ShirtOrder {
 
 /**
  * Verifica se o produto está visível para os membros solicitarem no app.
- * Só aparece se estiver em 'pre_save' (e dentro do prazo, caso haja data limite) ou 'oficial'.
- * Se estiver 'inativo' ou 'encomendado', NÃO aparece para os membros.
  */
 export function isProductVisibleToMembers(product: OfficialProduct): boolean {
   if (product.phase === 'inativo' || product.phase === 'encomendado') {
     return false;
   }
   if (product.phase === 'pre_save' && product.preSaveDeadline) {
-    // Verifica se a data limite do pré-save já passou (considerando fim do dia local)
     const parts = product.preSaveDeadline.split('-');
     if (parts.length === 3) {
       const deadlineDate = new Date(
@@ -203,22 +200,75 @@ export async function saveOfficialProducts(
 }
 
 /**
- * Busca os pedidos de um usuário (todos ou de um produto específico)
+ * Busca os pedidos de um usuário específico (lendo de donation_guides e profiles.theme_preference)
  */
 export async function fetchUserProductOrders(
   supabase: SupabaseClient,
   userId: string
 ): Promise<ShirtOrder[]> {
   try {
-    const all = await fetchAllShirtOrders(supabase);
-    return all.filter((o) => o.userId === userId);
+    const ordersMap = new Map<string, ShirtOrder>();
+
+    // 1. Lê do próprio perfil do usuário (profiles.theme_preference)
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('id, name, blood_type, theme_preference')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (prof?.theme_preference && prof.theme_preference.startsWith('{')) {
+      try {
+        const parsedPref = JSON.parse(prof.theme_preference);
+        if (Array.isArray(parsedPref.product_orders)) {
+          for (const ord of parsedPref.product_orders) {
+            if (ord && ord.userId === userId) {
+              const key = `${ord.productId || 'default'}_${userId}`;
+              ordersMap.set(key, {
+                ...ord,
+                id: ord.id || key,
+              });
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Lê também de donation_guides (caso atualizado pelo Admin com status de pagamento)
+    const { data: guidesData } = await supabase
+      .from('donation_guides')
+      .select('id, title, content, created_at, updated_at')
+      .like('title', `${SHIRT_ORDER_PREFIX}%${userId}`);
+
+    if (guidesData) {
+      for (const row of guidesData) {
+        try {
+          const parsed: ShirtOrder = JSON.parse(row.content);
+          const key = `${parsed.productId || 'default'}_${userId}`;
+          const existing = ordersMap.get(key);
+          const rowUpdated = parsed.updatedAt || row.updated_at || '';
+          if (!existing || rowUpdated >= (existing.updatedAt || '')) {
+            ordersMap.set(key, {
+              ...parsed,
+              id: row.id,
+              userId: parsed.userId || userId,
+              createdAt: parsed.createdAt || row.created_at,
+              updatedAt: rowUpdated,
+            });
+          }
+        } catch {}
+      }
+    }
+
+    return Array.from(ordersMap.values());
   } catch {
     return [];
   }
 }
 
 /**
- * Salva ou atualiza a solicitação de um produto oficial pelo usuário
+ * Salva ou atualiza a solicitação de um produto oficial pelo usuário.
+ * Persiste tanto em profiles.theme_preference (permitido para qualquer membro logado)
+ * quanto em donation_guides (quando permitido).
  */
 export async function saveUserShirtOrder(
   supabase: SupabaseClient,
@@ -227,48 +277,98 @@ export async function saveUserShirtOrder(
   try {
     const prodKey = orderData.productId ? `${orderData.productId}_` : '';
     const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${orderData.userId}`;
+    const compositeId = `${orderData.productId || 'default'}_${orderData.userId}`;
     const now = new Date().toISOString();
 
-    const { data: existing } = await supabase
-      .from('donation_guides')
-      .select('id, content')
-      .eq('title', titleKey)
-      .limit(1);
-
-    let existingOrder: Partial<ShirtOrder> = {};
-    if (existing && existing.length > 0 && existing[0].content) {
-      try {
-        existingOrder = JSON.parse(existing[0].content);
-      } catch {}
-    }
-
     const finalOrder: ShirtOrder = {
-      ...existingOrder,
       ...orderData,
-      createdAt: existingOrder.createdAt || now,
+      id: compositeId,
+      createdAt: now,
       updatedAt: now,
     };
 
-    const payload = JSON.stringify(finalOrder);
+    let savedSuccessfully = false;
 
-    if (existing && existing.length > 0 && existing[0].id) {
-      const { error } = await supabase
+    // 1. Persiste em profiles.theme_preference (funciona para 100% dos membros logados via RLS do próprio perfil)
+    try {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('theme_preference')
+        .eq('id', orderData.userId)
+        .maybeSingle();
+
+      let existingObj: Record<string, any> = {};
+      let existingOrders: ShirtOrder[] = [];
+
+      if (prof?.theme_preference && prof.theme_preference.startsWith('{')) {
+        try {
+          existingObj = JSON.parse(prof.theme_preference);
+          if (Array.isArray(existingObj.product_orders)) {
+            existingOrders = existingObj.product_orders;
+          }
+        } catch {}
+      }
+
+      const prevMatch = existingOrders.find(
+        (o) => (o.productId || 'default') === (orderData.productId || 'default')
+      );
+      if (prevMatch?.createdAt) {
+        finalOrder.createdAt = prevMatch.createdAt;
+      }
+
+      const otherOrders = existingOrders.filter(
+        (o) => (o.productId || 'default') !== (orderData.productId || 'default')
+      );
+
+      const updatedThemePref = JSON.stringify({
+        ...existingObj,
+        product_orders: [finalOrder, ...otherOrders],
+        updated_at: now,
+      });
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .update({ theme_preference: updatedThemePref })
+        .eq('id', orderData.userId);
+
+      if (!profErr) {
+        savedSuccessfully = true;
+      }
+    } catch {}
+
+    // 2. Tenta também salvar em donation_guides
+    try {
+      const { data: existing } = await supabase
         .from('donation_guides')
-        .update({ content: payload })
-        .eq('id', existing[0].id);
+        .select('id, content')
+        .eq('title', titleKey)
+        .limit(1);
 
-      if (error) return null;
-      return { ...finalOrder, id: existing[0].id };
-    } else {
-      const { data: inserted, error } = await supabase
-        .from('donation_guides')
-        .insert([{ title: titleKey, content: payload }])
-        .select('id')
-        .single();
+      const payload = JSON.stringify(finalOrder);
 
-      if (error) return null;
-      return { ...finalOrder, id: inserted?.id };
-    }
+      if (existing && existing.length > 0 && existing[0].id) {
+        const { error } = await supabase
+          .from('donation_guides')
+          .update({ content: payload })
+          .eq('id', existing[0].id);
+        if (!error) {
+          savedSuccessfully = true;
+          finalOrder.id = existing[0].id;
+        }
+      } else {
+        const { data: inserted, error } = await supabase
+          .from('donation_guides')
+          .insert([{ title: titleKey, content: payload }])
+          .select('id')
+          .single();
+        if (!error && inserted?.id) {
+          savedSuccessfully = true;
+          finalOrder.id = inserted.id;
+        }
+      }
+    } catch {}
+
+    return savedSuccessfully ? finalOrder : null;
   } catch {
     return null;
   }
@@ -283,13 +383,43 @@ export async function cancelUserShirtOrder(
   productId?: string
 ): Promise<boolean> {
   try {
-    const prodKey = productId ? `${productId}_` : '';
-    const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${userId}`;
-    const { error } = await supabase
-      .from('donation_guides')
-      .delete()
-      .eq('title', titleKey);
-    return !error;
+    let ok = false;
+
+    // 1. Remove de profiles.theme_preference
+    try {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('theme_preference')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (prof?.theme_preference && prof.theme_preference.startsWith('{')) {
+        const existingObj = JSON.parse(prof.theme_preference);
+        if (Array.isArray(existingObj.product_orders)) {
+          existingObj.product_orders = existingObj.product_orders.filter(
+            (o: ShirtOrder) => (o.productId || 'default') !== (productId || 'default')
+          );
+          const { error: profErr } = await supabase
+            .from('profiles')
+            .update({ theme_preference: JSON.stringify(existingObj) })
+            .eq('id', userId);
+          if (!profErr) ok = true;
+        }
+      }
+    } catch {}
+
+    // 2. Remove de donation_guides se existir
+    try {
+      const prodKey = productId ? `${productId}_` : '';
+      const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${userId}`;
+      const { error } = await supabase
+        .from('donation_guides')
+        .delete()
+        .eq('title', titleKey);
+      if (!error) ok = true;
+    } catch {}
+
+    return ok;
   } catch {
     return false;
   }
@@ -303,55 +433,93 @@ export async function clearProductOrders(
   productId: string
 ): Promise<boolean> {
   try {
-    const orders = await fetchAllShirtOrders(supabase, productId);
-    const ids = orders.map((o) => o.id).filter(Boolean) as string[];
-    if (ids.length === 0) return true;
-    const { error } = await supabase
+    const prodKey = `${productId}_`;
+    await supabase
       .from('donation_guides')
       .delete()
-      .in('id', ids);
-    return !error;
+      .like('title', `${SHIRT_ORDER_PREFIX}${prodKey}%`);
+    return true;
   } catch {
     return false;
   }
 }
 
 /**
- * Busca todos os pedidos de produtos oficiais (filtrando opcionalmente por productId)
+ * Busca todos os pedidos de produtos oficiais (combinando profiles.theme_preference e donation_guides)
  */
 export async function fetchAllShirtOrders(
   supabase: SupabaseClient,
   productId?: string
 ): Promise<ShirtOrder[]> {
   try {
-    const { data, error } = await supabase
+    const ordersMap = new Map<string, ShirtOrder>();
+
+    // 1. Lê pedidos salvos nos perfis dos membros (profiles.theme_preference)
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('id, name, blood_type, theme_preference');
+
+    if (profilesData) {
+      for (const prof of profilesData) {
+        if (prof.theme_preference && prof.theme_preference.startsWith('{')) {
+          try {
+            const parsedPref = JSON.parse(prof.theme_preference);
+            if (Array.isArray(parsedPref.product_orders)) {
+              for (const ord of parsedPref.product_orders) {
+                if (ord) {
+                  const uId = ord.userId || prof.id;
+                  const key = `${ord.productId || 'default'}_${uId}`;
+                  ordersMap.set(key, {
+                    ...ord,
+                    id: ord.id || key,
+                    userId: uId,
+                    userName: ord.userName || prof.name || 'Membro',
+                    userBloodType: ord.userBloodType || prof.blood_type,
+                  });
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // 2. Lê pedidos salvos/atualizados pelo Admin em donation_guides
+    const { data: guidesData } = await supabase
       .from('donation_guides')
       .select('id, title, content, created_at, updated_at')
       .like('title', `${SHIRT_ORDER_PREFIX}%`)
       .order('created_at', { ascending: false });
 
-    if (error || !data) return [];
+    if (guidesData) {
+      for (const row of guidesData) {
+        try {
+          const parsed: ShirtOrder = JSON.parse(row.content);
+          const suffix = row.title.replace(SHIRT_ORDER_PREFIX, '').trim();
+          const uId = parsed.userId || suffix;
+          const key = `${parsed.productId || 'default'}_${uId}`;
+          const existing = ordersMap.get(key);
+          const rowUpdated = parsed.updatedAt || row.updated_at || '';
 
-    const orders: ShirtOrder[] = [];
-    for (const row of data) {
-      try {
-        const parsed: ShirtOrder = JSON.parse(row.content);
-        const suffix = row.title.replace(SHIRT_ORDER_PREFIX, '').trim();
-        orders.push({
-          ...parsed,
-          id: row.id,
-          userId: parsed.userId || suffix,
-          createdAt: parsed.createdAt || row.created_at,
-          updatedAt: parsed.updatedAt || row.updated_at,
-        });
-      } catch {}
+          if (!existing || rowUpdated >= (existing.updatedAt || '')) {
+            ordersMap.set(key, {
+              ...parsed,
+              id: row.id,
+              userId: uId,
+              createdAt: parsed.createdAt || row.created_at,
+              updatedAt: rowUpdated,
+            });
+          }
+        } catch {}
+      }
     }
 
+    const allOrders = Array.from(ordersMap.values());
     if (productId) {
-      return orders.filter((o) => o.productId === productId);
+      return allOrders.filter((o) => o.productId === productId);
     }
 
-    return orders;
+    return allOrders;
   } catch {
     return [];
   }
@@ -362,34 +530,43 @@ export async function fetchAllShirtOrders(
  */
 export async function updateShirtOrderStatus(
   supabase: SupabaseClient,
-  orderId: string,
+  order: ShirtOrder,
   paymentStatus: ShirtOrder['paymentStatus'],
   amountPaid: number,
   adminNotes?: string
 ): Promise<boolean> {
   try {
-    const { data, error: fetchErr } = await supabase
+    const now = new Date().toISOString();
+    const updatedOrder: ShirtOrder = {
+      ...order,
+      paymentStatus,
+      amountPaid,
+      notes: adminNotes !== undefined ? adminNotes : order.notes,
+      updatedAt: now,
+    };
+
+    const prodKey = order.productId ? `${order.productId}_` : '';
+    const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${order.userId}`;
+    const payload = JSON.stringify(updatedOrder);
+
+    const { data: existing } = await supabase
       .from('donation_guides')
-      .select('content')
-      .eq('id', orderId)
-      .single();
+      .select('id')
+      .eq('title', titleKey)
+      .limit(1);
 
-    if (fetchErr || !data) return false;
-
-    const parsed: ShirtOrder = JSON.parse(data.content);
-    parsed.paymentStatus = paymentStatus;
-    parsed.amountPaid = amountPaid;
-    if (adminNotes !== undefined) {
-      parsed.notes = adminNotes;
+    if (existing && existing.length > 0 && existing[0].id) {
+      const { error } = await supabase
+        .from('donation_guides')
+        .update({ content: payload })
+        .eq('id', existing[0].id);
+      return !error;
+    } else {
+      const { error } = await supabase
+        .from('donation_guides')
+        .insert([{ title: titleKey, content: payload }]);
+      return !error;
     }
-    parsed.updatedAt = new Date().toISOString();
-
-    const { error: updateErr } = await supabase
-      .from('donation_guides')
-      .update({ content: JSON.stringify(parsed) })
-      .eq('id', orderId);
-
-    return !updateErr;
   } catch {
     return false;
   }
