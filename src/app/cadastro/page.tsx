@@ -102,13 +102,17 @@ export default function Cadastro() {
     }
 
     if (authData.user) {
+      const allowedSex = sex === 'F' ? 'F' : 'M';
+      const allowedBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Não sei'];
+      const safeBloodType = allowedBloodTypes.includes(bloodType) ? bloodType : 'Não sei';
+
       await supabase.from('profiles').insert([
         {
           id: authData.user.id,
           name: cleanName,
           birth_date: birthDate,
-          sex,
-          blood_type: bloodType,
+          sex: allowedSex,
+          blood_type: safeBloodType,
           role: 'User',
           is_active: true,
         },

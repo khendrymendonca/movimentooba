@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { sanitizeText, sanitizeSafeUrl } from '@/utils/donationRules';
 
 export const SHIRT_CONFIG_KEY = '[CONFIG_CAMISA]';
 export const PRODUCTS_CATALOG_KEY = '[CATALOGO_PRODUTOS_OFICIAIS]';
@@ -175,7 +176,18 @@ export async function saveOfficialProducts(
   products: OfficialProduct[]
 ): Promise<boolean> {
   try {
-    const payload = JSON.stringify(products);
+    const sanitizedProducts: OfficialProduct[] = products.map((p) => ({
+      ...p,
+      name: sanitizeText(p.name, 120),
+      description: p.description ? sanitizeText(p.description, 400) : '',
+      imageUrl: sanitizeSafeUrl(p.imageUrl, true),
+      price: Math.max(0, Math.min(10000, Number(p.price) || 0)),
+      pixKey: sanitizeText(p.pixKey || '', 140),
+      pixReceiver: sanitizeText(p.pixReceiver || '', 120),
+      pixBank: p.pixBank ? sanitizeText(p.pixBank, 80) : '',
+    }));
+
+    const payload = JSON.stringify(sanitizedProducts);
     const { data: existing } = await supabase
       .from('donation_guides')
       .select('id')
@@ -280,16 +292,29 @@ export async function saveUserShirtOrder(
     const compositeId = `${orderData.productId || 'default'}_${orderData.userId}`;
     const now = new Date().toISOString();
 
+    const safeQuantity = Math.max(1, Math.min(10, Math.floor(Number(orderData.quantity) || 1)));
+    const safeUnitPrice = Math.max(0, Math.min(10000, Number(orderData.unitPrice) || 0));
+    const safeTotalPrice = safeQuantity * safeUnitPrice;
+
     const finalOrder: ShirtOrder = {
       ...orderData,
       id: compositeId,
+      productName: orderData.productName ? sanitizeText(orderData.productName, 120) : undefined,
+      userName: sanitizeText(orderData.userName || 'Membro', 100),
+      userPhone: '',
+      userEmail: '',
+      size: sanitizeText(orderData.size || 'Único', 30),
+      quantity: safeQuantity,
+      unitPrice: safeUnitPrice,
+      totalPrice: safeTotalPrice,
+      notes: orderData.notes ? sanitizeText(orderData.notes, 300) : '',
       createdAt: now,
       updatedAt: now,
     };
 
     let savedSuccessfully = false;
 
-    // 1. Persiste em profiles.theme_preference (funciona para 100% dos membros logados via RLS do próprio perfil)
+    // 1. Persiste em profiles.theme_preference (protegido por RLS do próprio perfil)
     try {
       const { data: prof } = await supabase
         .from('profiles')
@@ -336,7 +361,7 @@ export async function saveUserShirtOrder(
       }
     } catch {}
 
-    // 2. Tenta também salvar em donation_guides
+    // 2. Tenta salvar em donation_guides SEM dados pessoais sensíveis (LGPD)
     try {
       const { data: existing } = await supabase
         .from('donation_guides')
@@ -344,7 +369,22 @@ export async function saveUserShirtOrder(
         .eq('title', titleKey)
         .limit(1);
 
-      const payload = JSON.stringify(finalOrder);
+      const anonymizedForGuides = {
+        id: finalOrder.id,
+        productId: finalOrder.productId,
+        productName: finalOrder.productName,
+        userId: finalOrder.userId,
+        size: finalOrder.size,
+        quantity: finalOrder.quantity,
+        unitPrice: finalOrder.unitPrice,
+        totalPrice: finalOrder.totalPrice,
+        paymentStatus: finalOrder.paymentStatus,
+        amountPaid: finalOrder.amountPaid,
+        notes: finalOrder.notes,
+        createdAt: finalOrder.createdAt,
+        updatedAt: finalOrder.updatedAt,
+      };
+      const payload = JSON.stringify(anonymizedForGuides);
 
       if (existing && existing.length > 0 && existing[0].id) {
         const { error } = await supabase
@@ -453,6 +493,7 @@ export async function fetchAllShirtOrders(
 ): Promise<ShirtOrder[]> {
   try {
     const ordersMap = new Map<string, ShirtOrder>();
+    const profilesById = new Map<string, { name: string; blood_type?: string }>();
 
     // 1. Lê pedidos salvos nos perfis dos membros (profiles.theme_preference)
     const { data: profilesData } = await supabase
@@ -461,6 +502,7 @@ export async function fetchAllShirtOrders(
 
     if (profilesData) {
       for (const prof of profilesData) {
+        profilesById.set(prof.id, { name: prof.name || 'Membro', blood_type: prof.blood_type });
         if (prof.theme_preference && prof.theme_preference.startsWith('{')) {
           try {
             const parsedPref = JSON.parse(prof.theme_preference);
@@ -473,8 +515,8 @@ export async function fetchAllShirtOrders(
                     ...ord,
                     id: ord.id || key,
                     userId: uId,
-                    userName: ord.userName || prof.name || 'Membro',
-                    userBloodType: ord.userBloodType || prof.blood_type,
+                    userName: prof.name || ord.userName || 'Membro',
+                    userBloodType: prof.blood_type || ord.userBloodType,
                   });
                 }
               }
@@ -500,12 +542,16 @@ export async function fetchAllShirtOrders(
           const key = `${parsed.productId || 'default'}_${uId}`;
           const existing = ordersMap.get(key);
           const rowUpdated = parsed.updatedAt || row.updated_at || '';
+          const profInfo = profilesById.get(uId);
 
           if (!existing || rowUpdated >= (existing.updatedAt || '')) {
             ordersMap.set(key, {
+              ...existing,
               ...parsed,
               id: row.id,
               userId: uId,
+              userName: profInfo?.name || existing?.userName || parsed.userName || 'Membro',
+              userBloodType: profInfo?.blood_type || existing?.userBloodType || parsed.userBloodType,
               createdAt: parsed.createdAt || row.created_at,
               updatedAt: rowUpdated,
             });
@@ -537,17 +583,28 @@ export async function updateShirtOrderStatus(
 ): Promise<boolean> {
   try {
     const now = new Date().toISOString();
-    const updatedOrder: ShirtOrder = {
-      ...order,
+    const safeAmount = Math.max(0, Math.min(100000, Number(amountPaid) || 0));
+
+    // Armazena apenas dados não-sensíveis em donation_guides (LGPD)
+    const anonymizedOrder = {
+      id: order.id,
+      productId: order.productId,
+      productName: order.productName,
+      userId: order.userId,
+      size: order.size,
+      quantity: order.quantity,
+      unitPrice: order.unitPrice,
+      totalPrice: order.totalPrice,
       paymentStatus,
-      amountPaid,
-      notes: adminNotes !== undefined ? adminNotes : order.notes,
+      amountPaid: safeAmount,
+      notes: adminNotes !== undefined ? sanitizeText(adminNotes, 300) : order.notes,
+      createdAt: order.createdAt,
       updatedAt: now,
     };
 
     const prodKey = order.productId ? `${order.productId}_` : '';
     const titleKey = `${SHIRT_ORDER_PREFIX}${prodKey}${order.userId}`;
-    const payload = JSON.stringify(updatedOrder);
+    const payload = JSON.stringify(anonymizedOrder);
 
     const { data: existing } = await supabase
       .from('donation_guides')

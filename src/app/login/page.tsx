@@ -53,14 +53,15 @@ export default function Login() {
     });
 
     if (authError || !data.user) {
-      console.error('Erro de login no Supabase:', authError);
-      setFailedAttempts((prev) => prev + 1);
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= 5) {
+        setTimeout(() => setFailedAttempts(0), 30000);
+      }
       if (authError?.message?.includes('Email not confirmed')) {
         setError('E-mail ainda não confirmado. Verifique sua caixa de entrada.');
-      } else if (authError?.message?.includes('Invalid login credentials')) {
-        setError('E-mail ou senha incorretos.');
       } else {
-        setError(authError?.message || 'Erro ao realizar login. Verifique sua conexão.');
+        setError('E-mail ou senha incorretos.');
       }
       setLoading(false);
       return;

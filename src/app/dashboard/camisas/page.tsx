@@ -37,6 +37,7 @@ import {
   CampaignPhase,
   formatDeadlineBR,
 } from '@/lib/shirtOrders';
+import { validateSafeUpload } from '@/utils/donationRules';
 
 interface MemberProfile {
   id: string;
@@ -122,10 +123,19 @@ export default function DashboardProdutosOficiaisPage() {
     return activeProduct.id === products[0]?.id;
   });
 
-  // Upload e compressão da arte para base64 otimizado
+  // Upload e compressão da arte para base64 otimizado (com validação estrita contra SVG/XSS)
   const handleArtworkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const validation = validateSafeUpload(file, {
+      maxSizeMB: 10,
+      allowedTypes: ['image'],
+    });
+    if (!validation.valid) {
+      alert(validation.error || 'Formato de imagem não permitido.');
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const img = new window.Image();

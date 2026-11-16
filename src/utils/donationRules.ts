@@ -390,9 +390,27 @@ export function sanitizeText(value: string, maxLength: number = 500): string {
   return value
     .replace(/[<>]/g, '')
     .replace(/javascript:/gi, '')
+    .replace(/data:text\/html/gi, '')
+    .replace(/vbscript:/gi, '')
     .replace(/on\w+=/gi, '')
     .trim()
     .slice(0, maxLength);
+}
+
+/**
+ * Garante que uma URL externa ou imagem utilize apenas protocolos seguros (https://, http://
+ * ou opcionalmente data:image/(jpeg|png|webp);base64,), bloqueando javascript: e data:text/html.
+ */
+export function sanitizeSafeUrl(url?: string | null, allowDataImage: boolean = false): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (allowDataImage && /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^https?:\/\/[^\s<>"']+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  return '';
 }
 
 /**
@@ -447,11 +465,11 @@ export function parseNewsRow(row: any): any {
       if (parsed && typeof parsed.text === 'string') {
         return {
           ...row,
-          content: parsed.text,
-          subtitle: parsed.subtitle || row.subtitle || '',
-          image_url: parsed.image_url || row.image_url || null,
-          attachment_url: parsed.attachment_url || row.attachment_url || null,
-          author_name: parsed.author_name || row.author_name || 'Coordenação',
+          content: sanitizeText(parsed.text, 4000),
+          subtitle: sanitizeText(parsed.subtitle || row.subtitle || '', 200),
+          image_url: sanitizeSafeUrl(parsed.image_url || row.image_url, true) || null,
+          attachment_url: sanitizeSafeUrl(parsed.attachment_url || row.attachment_url, false) || null,
+          author_name: sanitizeText(parsed.author_name || row.author_name || 'Coordenação', 80),
         };
       }
     } catch {}

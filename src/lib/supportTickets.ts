@@ -200,11 +200,12 @@ export async function createSupportTicket(
     // Salva localmente
     saveLocalTicket(newTicket);
 
-    // Salva no Supabase
+    // Salva no Supabase sem expor e-mail ou telefone (LGPD)
+    const { userEmail: _e, userPhone: _p, ...anonymizedForGuides } = newTicket;
     const { error } = await supabase.from('donation_guides').insert([
       {
         title: `${TICKET_PREFIX}${id}`,
-        content: JSON.stringify(newTicket),
+        content: JSON.stringify(anonymizedForGuides),
         updated_by: data.userId,
       },
     ]);

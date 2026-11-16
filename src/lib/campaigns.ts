@@ -4,6 +4,7 @@ import {
   SupportCampaign,
   AppNotification,
   sanitizeText,
+  sanitizeSafeUrl,
   canDonateBlood,
   checkEligibilityForDate,
   parseSafeDate,
@@ -776,10 +777,19 @@ export async function fetchProjectConfig(supabase: SupabaseClient): Promise<Proj
     const parsed = JSON.parse(data.content);
     return {
       id: data.id,
-      whatsappGroupUrl: parsed.whatsappGroupUrl || DEFAULT_PROJECT_CONFIG.whatsappGroupUrl,
-      hemocenterName: parsed.hemocenterName || DEFAULT_PROJECT_CONFIG.hemocenterName,
-      hemocenterPhone: parsed.hemocenterPhone || DEFAULT_PROJECT_CONFIG.hemocenterPhone,
-      hemocenterScheduleUrl: parsed.hemocenterScheduleUrl || DEFAULT_PROJECT_CONFIG.hemocenterScheduleUrl,
+      whatsappGroupUrl:
+        sanitizeSafeUrl(parsed.whatsappGroupUrl) || DEFAULT_PROJECT_CONFIG.whatsappGroupUrl,
+      hemocenterName: sanitizeText(
+        parsed.hemocenterName || DEFAULT_PROJECT_CONFIG.hemocenterName,
+        150
+      ),
+      hemocenterPhone: sanitizeText(
+        parsed.hemocenterPhone || DEFAULT_PROJECT_CONFIG.hemocenterPhone,
+        40
+      ),
+      hemocenterScheduleUrl:
+        sanitizeSafeUrl(parsed.hemocenterScheduleUrl) ||
+        DEFAULT_PROJECT_CONFIG.hemocenterScheduleUrl,
     };
   } catch {
     return DEFAULT_PROJECT_CONFIG;
@@ -795,10 +805,13 @@ export async function saveProjectConfig(
   userId?: string
 ): Promise<{ error: string | null }> {
   const payload = {
-    whatsappGroupUrl: config.whatsappGroupUrl.trim(),
+    whatsappGroupUrl:
+      sanitizeSafeUrl(config.whatsappGroupUrl) || DEFAULT_PROJECT_CONFIG.whatsappGroupUrl,
     hemocenterName: sanitizeText(config.hemocenterName, 150),
     hemocenterPhone: sanitizeText(config.hemocenterPhone, 40),
-    hemocenterScheduleUrl: config.hemocenterScheduleUrl.trim(),
+    hemocenterScheduleUrl:
+      sanitizeSafeUrl(config.hemocenterScheduleUrl) ||
+      DEFAULT_PROJECT_CONFIG.hemocenterScheduleUrl,
   };
 
   const existing = await fetchProjectConfig(supabase);
