@@ -1,22 +1,52 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Plus, Image as ImageIcon, FileText, Trash2, Upload, ArrowLeft } from 'lucide-react';
+import { Plus, Image as ImageIcon, FileText, Trash2, Upload, ArrowLeft, Edit3, X } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
-import { sanitizeText, validateSafeUpload } from '@/utils/donationRules';
+import { sanitizeText, validateSafeUpload, parseNewsRow } from '@/utils/donationRules';
+
+function renderContentWithLinks(text?: string) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(urlRegex);
+  return parts.map((part, idx) => {
+    if (/^(https?:\/\/|www\.)/i.test(part)) {
+      const cleanUrl = part.replace(/[.,;!?)]+$/, '');
+      const trailing = part.slice(cleanUrl.length);
+      const href = cleanUrl.toLowerCase().startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+      return (
+        <span key={idx}>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-red-600 hover:text-red-700 underline break-all font-medium"
+          >
+            {cleanUrl}
+          </a>
+          {trailing}
+        </span>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
 
 export default function NoticiasADM() {
   const [news, setNews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [content, setContent] = useState('');
 
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [existingAttachmentUrl, setExistingAttachmentUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const supabase = createClient();
@@ -31,8 +61,60 @@ export default function NoticiasADM() {
       .from('news')
       .select('*')
       .order('created_at', { ascending: false });
-    if (data) setNews(data);
+    if (data) setNews(data.map(parseNewsRow));
     setLoading(false);
+  }
+
+  function compressImageToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 900;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+          } else {
+            resolve(reader.result as string);
+          }
+        };
+        img.src = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function handleOpenNew() {
+    resetForm();
+    setIsModalOpen(true);
+  }
+
+  function handleOpenEdit(post: any) {
+    setEditingPostId(post.id);
+    setTitle(post.title || '');
+    setSubtitle(post.subtitle || '');
+    setContent(post.content || '');
+    setImageFile(null);
+    setExistingImageUrl(post.image_url || null);
+    setAttachmentFile(null);
+    setExistingAttachmentUrl(post.attachment_url || null);
+    setIsModalOpen(true);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -52,8 +134,8 @@ export default function NoticiasADM() {
       if (profile) authorName = profile.name;
     }
 
-    let finalImageUrl = null;
-    let finalAttachmentUrl = null;
+    let finalImageUrl: string | null = existingImageUrl;
+    let finalAttachmentUrl: string | null = existingAttachmentUrl;
 
     if (imageFile) {
       const imgValidation = validateSafeUpload(imageFile, {
@@ -77,7 +159,7 @@ export default function NoticiasADM() {
           .getPublicUrl(filePath);
         finalImageUrl = publicUrlData.publicUrl;
       } else {
-        alert('Erro no upload da imagem: ' + uploadError.message);
+        finalImageUrl = await compressImageToDataUrl(imageFile);
       }
     }
 
@@ -102,26 +184,45 @@ export default function NoticiasADM() {
           .from('news_assets')
           .getPublicUrl(filePath);
         finalAttachmentUrl = publicUrlData.publicUrl;
-      } else {
-        alert('Erro no upload do anexo: ' + uploadError.message);
       }
     }
 
-    const newPost = {
-      title: sanitizeText(title, 150),
-      subtitle: sanitizeText(subtitle, 200),
-      content: sanitizeText(content, 4000),
+    const cleanTitle = sanitizeText(title, 150);
+    const cleanSubtitle = sanitizeText(subtitle, 200);
+    const cleanContent = sanitizeText(content, 4000);
+
+    const structuredContent = JSON.stringify({
+      text: cleanContent,
+      subtitle: cleanSubtitle,
       image_url: finalImageUrl,
       attachment_url: finalAttachmentUrl,
-      author_id: userId,
       author_name: authorName,
-    };
+    });
 
-    const { error } = await supabase.from('news').insert([newPost]);
+    let error: any = null;
+    if (editingPostId) {
+      const res = await supabase
+        .from('news')
+        .update({
+          title: cleanTitle,
+          content: structuredContent,
+        })
+        .eq('id', editingPostId);
+      error = res.error;
+    } else {
+      const res = await supabase.from('news').insert([
+        {
+          title: cleanTitle,
+          content: structuredContent,
+          author_id: userId,
+        },
+      ]);
+      error = res.error;
+    }
 
     setSaving(false);
     if (error) {
-      alert('Erro ao publicar: ' + error.message);
+      alert('Erro ao salvar: ' + error.message);
     } else {
       setIsModalOpen(false);
       resetForm();
@@ -136,11 +237,14 @@ export default function NoticiasADM() {
   }
 
   function resetForm() {
+    setEditingPostId(null);
     setTitle('');
     setSubtitle('');
     setContent('');
     setImageFile(null);
+    setExistingImageUrl(null);
     setAttachmentFile(null);
+    setExistingAttachmentUrl(null);
   }
 
   return (
@@ -156,7 +260,7 @@ export default function NoticiasADM() {
           <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Mural de Notícias</h1>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={handleOpenNew}
           className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3.5 py-2 rounded-full text-xs font-normal transition-colors shrink-0"
         >
           <Plus size={15} />
@@ -201,19 +305,33 @@ export default function NoticiasADM() {
 
               <div className="flex-1 flex flex-col justify-between">
                 <div>
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start gap-2">
                     <h2 className="text-xl font-bold text-slate-900 leading-tight">{post.title}</h2>
-                    <button
-                      onClick={() => handleDelete(post.id)}
-                      className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(post)}
+                        title="Editar notícia"
+                        className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-100"
+                      >
+                        <Edit3 size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(post.id)}
+                        title="Excluir notícia"
+                        className="text-slate-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
                   </div>
                   {post.subtitle && (
                     <p className="text-red-600 font-medium text-sm mt-1">{post.subtitle}</p>
                   )}
-                  <p className="text-slate-500 mt-2 line-clamp-2 text-sm">{post.content}</p>
+                  <p className="text-slate-600 mt-2 whitespace-pre-line text-sm leading-relaxed">
+                    {renderContentWithLinks(post.content)}
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-4 mt-4 pt-4 border-t border-slate-50 text-xs text-slate-400 font-medium">
@@ -240,15 +358,31 @@ export default function NoticiasADM() {
         </div>
       )}
 
-      {/* Modal de Nova Postagem */}
+      {/* Modal de Criar / Editar Postagem */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-100">
-            <div className="p-6 border-b border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900">Criar Nova Postagem</h2>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSave}
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[82dvh] flex flex-col overflow-hidden border border-slate-100"
+          >
+            <div className="shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                {editingPostId ? 'Editar Notícia' : 'Criar Nova Postagem'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  resetForm();
+                }}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Título da Postagem
@@ -303,6 +437,8 @@ export default function NoticiasADM() {
                       <ImageIcon size={18} />
                       {imageFile ? (
                         <span className="truncate max-w-[150px]">{imageFile.name}</span>
+                      ) : existingImageUrl ? (
+                        <span>Trocar Imagem Atual</span>
                       ) : (
                         <span>Selecionar Imagem</span>
                       )}
@@ -314,6 +450,15 @@ export default function NoticiasADM() {
                       onChange={(e) => setImageFile(e.target.files ? e.target.files[0] : null)}
                     />
                   </label>
+                  {existingImageUrl && !imageFile && (
+                    <button
+                      type="button"
+                      onClick={() => setExistingImageUrl(null)}
+                      className="text-xs text-red-600 hover:underline mt-1"
+                    >
+                      Remover imagem atual
+                    </button>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -324,6 +469,8 @@ export default function NoticiasADM() {
                       <FileText size={18} />
                       {attachmentFile ? (
                         <span className="truncate max-w-[150px]">{attachmentFile.name}</span>
+                      ) : existingAttachmentUrl ? (
+                        <span>Trocar PDF Atual</span>
                       ) : (
                         <span>Selecionar PDF</span>
                       )}
@@ -339,35 +486,38 @@ export default function NoticiasADM() {
                   </label>
                 </div>
               </div>
+            </div>
 
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors disabled:opacity-70"
-                >
-                  {saving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Publicando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={18} />
-                      <span>Publicar Comunicado</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="shrink-0 flex gap-3 px-6 py-4 bg-white border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  resetForm();
+                }}
+                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-70"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={18} />
+                    <span>{editingPostId ? 'Salvar Alterações' : 'Publicar Comunicado'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       )}
       </div>

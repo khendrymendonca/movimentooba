@@ -16,6 +16,33 @@ import {
 import { AppNotification } from '@/utils/donationRules';
 import Link from 'next/link';
 
+function renderMessageWithLinks(text?: string) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(urlRegex);
+  return parts.map((part, idx) => {
+    if (/^(https?:\/\/|www\.)/i.test(part)) {
+      const cleanUrl = part.replace(/[.,;!?)]+$/, '');
+      const trailing = part.slice(cleanUrl.length);
+      const href = cleanUrl.toLowerCase().startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+      return (
+        <span key={idx}>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-red-600 hover:text-red-700 underline break-all font-medium"
+          >
+            {cleanUrl}
+          </a>
+          {trailing}
+        </span>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
+
 interface NotificationModalProps {
   notifications: AppNotification[];
   isOpen: boolean;
@@ -171,7 +198,7 @@ export function NotificationModal({
                       </div>
 
                       <p className="text-xs text-slate-600 font-normal leading-relaxed">
-                        {item.message}
+                        {renderMessageWithLinks(item.message)}
                       </p>
 
                       {item.link && (

@@ -7,6 +7,7 @@ import {
   canDonateBlood,
   checkEligibilityForDate,
   parseSafeDate,
+  parseNewsRow,
 } from '@/utils/donationRules';
 
 const CAMPAIGN_PREFIX = '[MUTIRAO] ';
@@ -644,7 +645,8 @@ export async function fetchUnifiedNotifications(
 
     // 3. Notícias recentes
     if (newsRes.data) {
-      for (const n of newsRes.data) {
+      for (const rawN of newsRes.data) {
+        const n = parseNewsRow(rawN);
         notifications.push({
           id: `news-${n.id}`,
           type: 'noticia',

@@ -433,3 +433,31 @@ export function validateSafeUpload(
 
   return { valid: true, safeExtension };
 }
+
+/**
+ * Desempacota uma linha da tabela `news`, suportando tanto `content` em texto puro
+ * quanto JSON estruturado com `{ text, subtitle, image_url, attachment_url, author_name }`.
+ */
+export function parseNewsRow(row: any): any {
+  if (!row) return row;
+  const raw = typeof row.content === 'string' ? row.content : '';
+  if (raw.startsWith('{') && raw.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.text === 'string') {
+        return {
+          ...row,
+          content: parsed.text,
+          subtitle: parsed.subtitle || row.subtitle || '',
+          image_url: parsed.image_url || row.image_url || null,
+          attachment_url: parsed.attachment_url || row.attachment_url || null,
+          author_name: parsed.author_name || row.author_name || 'Coordenação',
+        };
+      }
+    } catch {}
+  }
+  return {
+    ...row,
+    author_name: row.author_name || 'Coordenação',
+  };
+}

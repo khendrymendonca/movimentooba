@@ -48,12 +48,40 @@ import {
   parseSafeDate,
   getDonationIntervalDays,
   canDonateBlood,
+  parseNewsRow,
 } from '@/utils/donationRules';
 import { NotificationModal } from '@/components/NotificationModal';
 import Image from 'next/image';
 import Link from 'next/link';
 
 const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbE55L14yltHPKvKYE1z';
+
+function renderContentWithLinks(text?: string) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(urlRegex);
+  return parts.map((part, idx) => {
+    if (/^(https?:\/\/|www\.)/i.test(part)) {
+      const cleanUrl = part.replace(/[.,;!?)]+$/, '');
+      const trailing = part.slice(cleanUrl.length);
+      const href = cleanUrl.toLowerCase().startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+      return (
+        <span key={idx}>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-red-600 hover:text-red-700 underline break-all font-medium"
+          >
+            {cleanUrl}
+          </a>
+          {trailing}
+        </span>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
 
 export default function DoadorHome() {
   const [profile, setProfile] = useState<any>(null);
@@ -67,6 +95,7 @@ export default function DoadorHome() {
   const [config, setConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [selectedSupportModal, setSelectedSupportModal] = useState<SupportCampaign | null>(null);
+  const [selectedNewsModal, setSelectedNewsModal] = useState<any | null>(null);
   const [officialProducts, setOfficialProducts] = useState<OfficialProduct[]>([]);
   const [userOrders, setUserOrders] = useState<ShirtOrder[]>([]);
   const [previewProductArtwork, setPreviewProductArtwork] = useState<OfficialProduct | null>(null);
@@ -114,7 +143,7 @@ export default function DoadorHome() {
       userId ? fetchUserProductOrders(supabase, userId).catch(() => []) : Promise.resolve([]),
     ]);
 
-    if (newsData) setFeed(newsData);
+    if (newsData) setFeed(newsData.map(parseNewsRow));
     if (loadedProducts) setOfficialProducts(loadedProducts.filter(isProductVisibleToMembers));
     if (loadedUserOrders) setUserOrders(loadedUserOrders);
 
@@ -683,42 +712,36 @@ export default function DoadorHome() {
               {feed.map((item) => (
                 <article
                   key={item.id}
-                  className="bg-white p-3.5 rounded-2xl border border-slate-200/80 flex flex-col gap-2"
+                  onClick={() => setSelectedNewsModal(item)}
+                  className="bg-white p-3.5 rounded-2xl border border-slate-200/80 hover:border-slate-300 transition-colors cursor-pointer flex items-center justify-between gap-3 group"
                 >
-                  <div className="flex gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     {item.image_url ? (
                       <img
                         src={item.image_url}
                         alt="Capa"
-                        className="w-16 h-16 rounded-xl flex-shrink-0 object-cover border border-slate-100"
+                        className="w-14 h-14 rounded-xl flex-shrink-0 object-cover border border-slate-100"
                       />
                     ) : (
-                      <div className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center bg-slate-50 text-slate-400 border border-slate-100">
+                      <div className="w-14 h-14 rounded-xl flex-shrink-0 flex items-center justify-center bg-slate-50 text-slate-400 border border-slate-100">
                         <Newspaper size={20} />
                       </div>
                     )}
-                    <div className="flex-1 flex flex-col justify-center">
-                      <span className="text-[10px] text-slate-400 font-normal mb-0.5">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] text-slate-400 font-normal block">
                         {new Date(item.created_at).toLocaleDateString('pt-BR')}
                       </span>
-                      <h3 className="text-xs sm:text-sm font-medium text-slate-900 leading-tight mb-1">
+                      <h3 className="text-xs sm:text-sm font-semibold text-slate-900 truncate group-hover:text-red-600 transition-colors">
                         {item.title}
                       </h3>
-                      <p className="text-xs text-slate-600 font-normal line-clamp-2 leading-relaxed">
-                        {item.content}
+                      <p className="text-xs text-slate-500 font-normal line-clamp-1 mt-0.5">
+                        {item.subtitle || item.content}
                       </p>
                     </div>
                   </div>
-                  {item.attachment_url && (
-                    <a
-                      href={item.attachment_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 hover:underline font-normal self-start"
-                    >
-                      Ver Anexo
-                    </a>
-                  )}
+                  <span className="text-xs text-red-600 font-medium shrink-0">
+                    Ler →
+                  </span>
                 </article>
               ))}
             </div>
@@ -843,6 +866,90 @@ export default function DoadorHome() {
               <button
                 type="button"
                 onClick={() => setPreviewProductArtwork(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Leitura Completa da Notícia */}
+      {selectedNewsModal && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4"
+          onClick={() => setSelectedNewsModal(null)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85dvh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Topo Fixo */}
+            <div className="shrink-0 px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white">
+              <span className="text-xs font-semibold text-slate-500">
+                {new Date(selectedNewsModal.created_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+                {selectedNewsModal.author_name ? ` • Por ${selectedNewsModal.author_name}` : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedNewsModal(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Corpo da Matéria Rolável */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {selectedNewsModal.image_url && (
+                <div className="w-full rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 max-h-64 flex items-center justify-center">
+                  <img
+                    src={selectedNewsModal.image_url}
+                    alt={selectedNewsModal.title}
+                    className="w-full max-h-64 object-cover"
+                  />
+                </div>
+              )}
+
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                  {selectedNewsModal.title}
+                </h2>
+                {selectedNewsModal.subtitle && (
+                  <p className="text-xs sm:text-sm text-red-600 font-medium mt-1">
+                    {selectedNewsModal.subtitle}
+                  </p>
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm text-slate-700 font-normal whitespace-pre-line leading-relaxed">
+                {renderContentWithLinks(selectedNewsModal.content)}
+              </div>
+
+              {selectedNewsModal.attachment_url && (
+                <a
+                  href={selectedNewsModal.attachment_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold transition-colors"
+                >
+                  <ExternalLink size={14} />
+                  <span>Abrir Documento Anexo (PDF)</span>
+                </a>
+              )}
+            </div>
+
+            {/* Rodapé Fixo */}
+            <div className="shrink-0 px-5 py-3.5 bg-white border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSelectedNewsModal(null)}
                 className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors"
               >
                 Fechar
