@@ -3,8 +3,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 export const SHIRT_CONFIG_KEY = '[CONFIG_CAMISA]';
 export const SHIRT_ORDER_PREFIX = '[PEDIDO_CAMISA] ';
 
+export type CampaignPhase = 'pre_save' | 'oficial';
+
 export interface ShirtConfig {
-  price: number;
+  campaignPhase: CampaignPhase;
+  isPriceDefined: boolean;
+  price: number; // 0 se ainda não definido, ou valor final
+  estimatedPrice?: string; // ex: "A definir após cotação" ou "Aprox. R$ 40 - R$ 45"
   imageUrl: string;
   pixKey: string;
   pixReceiver: string;
@@ -16,15 +21,18 @@ export interface ShirtConfig {
 }
 
 export const DEFAULT_SHIRT_CONFIG: ShirtConfig = {
-  price: 45.0,
+  campaignPhase: 'pre_save',
+  isPriceDefined: false,
+  price: 0,
+  estimatedPrice: 'A definir com a fábrica (sem pagamento agora)',
   imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
   pixKey: 'contato@movimentooba.com.br',
   pixReceiver: 'Movimento O Bom Amigo',
   pixBank: 'Banco Inter / NuBank',
   isActive: true,
-  deadline: 'A combinar com a coordenação',
+  deadline: 'Em levantamento de demanda para cotação',
   deliveryInfo: 'Entrega presencial nos mutirões de doação ou no Hemominas.',
-  description: 'Camisa oficial 100% algodão premium com a estampa exclusiva do Movimento O Bom Amigo.',
+  description: 'Camisa oficial do Movimento O Bom Amigo. Tecido premium de alta durabilidade para vestir a causa nas doações.',
 };
 
 export type ShirtSize =
@@ -58,6 +66,8 @@ export const AVAILABLE_SHIRT_SIZES: ShirtSize[] = [
   'Infantil 14',
 ];
 
+export type PaymentStatus = 'pre_save' | 'pendente' | 'sinal' | 'pago' | 'entregue';
+
 export interface ShirtOrder {
   id?: string;
   userId: string;
@@ -69,7 +79,7 @@ export interface ShirtOrder {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
-  paymentStatus: 'pendente' | 'sinal' | 'pago' | 'entregue';
+  paymentStatus: PaymentStatus;
   amountPaid: number;
   notes?: string;
   createdAt: string;
@@ -169,7 +179,7 @@ export async function fetchUserShirtOrder(
 }
 
 /**
- * Salva ou atualiza a solicitação de camisa do usuário
+ * Salva ou atualiza a solicitação de camisa do usuário (no Pré-Save ou Oficial)
  */
 export async function saveUserShirtOrder(
   supabase: SupabaseClient,

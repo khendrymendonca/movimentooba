@@ -19,3 +19,5 @@
 | Data | Tipo (Bug/UI/Regra) | Descrição da Alteração | Responsável |
 |---|---|---|---|
 | 16/11/2026 | Inicialização | Criação da tela de gestão e integração com a Sidebar administrativa | Antigravity |
+| 16/11/2026 | Regra/UI | Implementação do fluxo de Pré-Save (Fase 1: levantamento de demanda sem cobrança inicial) com botão direto para "Lançar Preço Final & Cobrar Sinal" (Fase 2: oficial) | Antigravity |
+| 16/11/2026 | Arquitetura | Inclusão de barra superior administrativa fixa com abas e atalho destacado no dashboard para acesso do Super Usuário | Antigravity |

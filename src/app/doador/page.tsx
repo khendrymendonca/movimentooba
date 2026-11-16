@@ -346,20 +346,24 @@ export default function DoadorHome() {
             <div className="space-y-1.5 flex-1 min-w-0">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider">
                 <Shirt size={12} />
-                Camisa Oficial
+                {shirtConfig?.campaignPhase === 'pre_save' ? 'Pré-Save Aberto' : 'Camisa Oficial'}
               </div>
               <h3 className="text-sm sm:text-base font-bold tracking-tight text-white">
                 Camisa Oficial do Movimento
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed font-normal">
                 {shirtOrder
-                  ? `Seu pedido: Tamanho ${shirtOrder.size} • ${shirtOrder.quantity} un. (${
-                      shirtOrder.paymentStatus === 'pago'
-                        ? 'Quitado'
-                        : shirtOrder.paymentStatus === 'sinal'
-                        ? `Sinal Pago: R$ ${shirtOrder.amountPaid?.toFixed(2).replace('.', ',')}`
-                        : 'Aguardando Pagamento'
-                    })`
+                  ? shirtConfig?.campaignPhase === 'pre_save' || shirtOrder.paymentStatus === 'pre_save'
+                    ? `Seu Pré-Save está confirmado: Tamanho ${shirtOrder.size} • ${shirtOrder.quantity} ${shirtOrder.quantity > 1 ? 'camisas' : 'camisa'} (Sem custo agora).`
+                    : `Seu pedido: Tamanho ${shirtOrder.size} • ${shirtOrder.quantity} un. (${
+                        shirtOrder.paymentStatus === 'pago'
+                          ? 'Quitado'
+                          : shirtOrder.paymentStatus === 'sinal'
+                          ? `Sinal Pago: R$ ${shirtOrder.amountPaid?.toFixed(2).replace('.', ',')}`
+                          : 'Aguardando Pagamento'
+                      })`
+                  : shirtConfig?.campaignPhase === 'pre_save'
+                  ? 'Participe do Pré-Save! Indique seu tamanho e quantidade sem cobrança agora para cotarmos o melhor preço com a confecção.'
                   : `Vista a camisa nos mutirões! Encomende a sua por apenas R$ ${(
                       shirtConfig?.price || 45
                     )
@@ -377,17 +381,38 @@ export default function DoadorHome() {
             </div>
           </div>
 
-          <div className="pt-3 mt-3 border-t border-white/10 flex items-center justify-between gap-3 relative z-10">
+          <div className="pt-3 mt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 relative z-10">
             <span className="text-xs text-slate-300 font-medium">
-              R$ {(shirtConfig?.price || 45).toFixed(2).replace('.', ',')} / unidade
+              {shirtConfig?.campaignPhase === 'pre_save'
+                ? 'Sem custo agora (Cotação em andamento)'
+                : `R$ ${(shirtConfig?.price || 45).toFixed(2).replace('.', ',')} / unidade`}
             </span>
-            <Link
-              href="/doador/camisa"
-              className="px-4 py-2 rounded-full bg-white hover:bg-slate-100 text-slate-900 text-xs font-semibold transition-colors flex items-center gap-1 shadow-xs"
-            >
-              <span>{shirtOrder ? 'Ver Meu Pedido' : 'Solicitar Camisa'}</span>
-              <span>→</span>
-            </Link>
+            <div className="flex items-center gap-2">
+              {profile?.role === 'ADM' && (
+                <Link
+                  href="/dashboard/camisas"
+                  className="px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors flex items-center gap-1 shadow-xs"
+                >
+                  <Shirt size={13} />
+                  <span>Painel de Gestão</span>
+                </Link>
+              )}
+              <Link
+                href="/doador/camisa"
+                className="px-4 py-2 rounded-full bg-white hover:bg-slate-100 text-slate-900 text-xs font-semibold transition-colors flex items-center gap-1 shadow-xs"
+              >
+                <span>
+                  {shirtOrder
+                    ? shirtConfig?.campaignPhase === 'pre_save'
+                      ? 'Ver Meu Pré-Save'
+                      : 'Ver Meu Pedido'
+                    : shirtConfig?.campaignPhase === 'pre_save'
+                    ? 'Garantir Meu Pré-Save'
+                    : 'Solicitar Camisa'}
+                </span>
+                <span>→</span>
+              </Link>
+            </div>
           </div>
         </div>
 

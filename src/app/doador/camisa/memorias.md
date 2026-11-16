@@ -23,3 +23,5 @@
 | Data | Tipo (Bug/UI/Regra) | Descrição da Alteração | Responsável |
 |---|---|---|---|
 | 16/11/2026 | Inicialização | Lançamento oficial do módulo de Camisas Oficiais para membros | Antigravity |
+| 16/11/2026 | Regra/UI | Suporte ao modo Pré-Save: indicação de interesse/tamanho sem cobrança imediata e transição transparente quando o admin lança o preço final e dados PIX | Antigravity |
+| 16/11/2026 | UX | Banner superior exclusivo para Super Usuário com atalho direto para o painel de gestão | Antigravity |
