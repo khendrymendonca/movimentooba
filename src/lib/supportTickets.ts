@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { sanitizeText } from '@/utils/donationRules';
+import { triggerRemotePushBroadcast } from '@/lib/pushNotifications';
 
 export type TicketCategory = 'ajuste_nome' | 'relato_bug' | 'sugestao' | 'outro';
 export type TicketStatus = 'pendente' | 'em_analise' | 'resolvido' | 'cancelado';
@@ -361,22 +362,37 @@ async function sendTicketNotificationToUser(
         ? 'Em Análise pela Coordenação'
         : 'Atualizado';
 
+    const cleanTitle = `💬 Chamado ${protocol}: ${statusText}`;
+    const cleanMsg = sanitizeText(message, 600);
     const payload = {
       target_user_id: userId,
       type: 'chamado',
-      title: `💬 Chamado ${protocol}: ${statusText}`,
-      message: sanitizeText(message, 600),
+      title: cleanTitle,
+      message: cleanMsg,
       link: '/doador/apoio',
       created_at: new Date().toISOString(),
     };
 
-    await supabase.from('donation_guides').insert([
-      {
-        title: `[NOTIF_USER] ${userId}`,
-        content: JSON.stringify(payload),
-        updated_by: adminId || null,
-      },
-    ]);
+    const { data } = await supabase
+      .from('donation_guides')
+      .insert([
+        {
+          title: `[NOTIF_USER] ${userId}`,
+          content: JSON.stringify(payload),
+          updated_by: adminId || null,
+        },
+      ])
+      .select('id')
+      .maybeSingle();
+
+    triggerRemotePushBroadcast({
+      id: data?.id || `ticket-${Date.now()}`,
+      title: cleanTitle,
+      message: cleanMsg,
+      link: '/doador/apoio',
+      is_urgent: true,
+      targetUserId: userId,
+    });
   } catch (e) {
     console.error('Erro ao enviar notificação de chamado para o usuário:', e);
   }

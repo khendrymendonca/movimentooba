@@ -51,8 +51,8 @@ const securityHeaders = [
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https://*.supabase.co",
       isDev
-        ? "connect-src 'self' https://*.supabase.co wss://*.supabase.co ws: http:"
-        : "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+        ? "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fcm.googleapis.com https://*.push.services.mozilla.com https://*.notify.windows.com https://*.push.apple.com ws: http:"
+        : "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fcm.googleapis.com https://*.push.services.mozilla.com https://*.notify.windows.com https://*.push.apple.com",
       "object-src 'none'",
       "frame-ancestors 'none'",
       "base-uri 'self'",

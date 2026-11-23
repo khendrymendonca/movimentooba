@@ -19,9 +19,18 @@ import {
   Clock,
   ArrowRight,
   Globe,
+  Bell,
+  BellRing,
+  CheckCircle2,
 } from 'lucide-react';
 import { sanitizeText, validateSafeUpload } from '@/utils/donationRules';
 import { ImageCropperModal } from '@/components/ImageCropperModal';
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestAndSubscribePush,
+  showSystemTrayNotification,
+} from '@/lib/pushNotifications';
 
 export default function PerfilDoador() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -40,8 +49,16 @@ export default function PerfilDoador() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // Permissão de Notificações na Barra do Aparelho
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [activatingPush, setActivatingPush] = useState(false);
+
   const supabase = createClient();
   const router = useRouter();
+
+  useEffect(() => {
+    setNotifPermission(getNotificationPermission());
+  }, []);
 
   useEffect(() => {
     async function getUser() {
@@ -466,6 +483,91 @@ export default function PerfilDoador() {
               {savingPassword ? 'Atualizando senha...' : 'Atualizar Senha'}
             </button>
           </div>
+        </div>
+
+        {/* 2.5. Notificações na Barra do Celular / Computador */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <BellRing size={16} className="text-red-600" />
+              Notificações na Barra do Celular
+            </h3>
+            <span
+              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                notifPermission === 'granted'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : notifPermission === 'denied'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-amber-100 text-amber-800'
+              }`}
+            >
+              {notifPermission === 'granted'
+                ? 'Ativadas'
+                : notifPermission === 'denied'
+                ? 'Bloqueadas'
+                : 'Desativadas'}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-600 font-normal leading-relaxed">
+            Receba alertas na barra de notificações do seu aparelho sempre que houver um pedido urgente da Rede SOS, novo mutirão ou medalha liberada.
+          </p>
+
+          {notifPermission === 'granted' ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-50/70 border border-emerald-200 p-3 rounded-xl">
+              <span className="text-xs text-emerald-800 font-medium flex items-center gap-1.5">
+                <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                Seu aparelho está pronto para receber alertas na barra!
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  await showSystemTrayNotification({
+                    id: `test-push-${Date.now()}`,
+                    type: 'sistema',
+                    title: '🔔 Teste de Notificação O Bom Amigo',
+                    message: 'Tudo certo! As notificações estão aparecendo na barra do seu aparelho.',
+                    created_at: new Date().toISOString(),
+                    is_urgent: false,
+                  });
+                }}
+                className="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-semibold transition-colors shrink-0 cursor-pointer"
+              >
+                Testar Alerta na Barra
+              </button>
+            </div>
+          ) : notifPermission === 'denied' ? (
+            <div className="bg-red-50 border border-red-200 p-3 rounded-xl text-xs text-red-800 leading-relaxed">
+              As notificações foram bloqueadas nas configurações do navegador. Toque no ícone de cadeado ao lado do endereço do site e altere <strong>Notificações</strong> para <strong>Permitir</strong>.
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={activatingPush}
+              onClick={async () => {
+                setActivatingPush(true);
+                const res = await requestAndSubscribePush(supabase, userProfile.id);
+                setActivatingPush(false);
+                setNotifPermission(getNotificationPermission());
+                if (res.granted) {
+                  await showSystemTrayNotification({
+                    id: `welcome-profile-push-${Date.now()}`,
+                    type: 'sistema',
+                    title: '🔔 Notificações Ativadas!',
+                    message: 'Você receberá alertas na barra do seu celular sempre que houver novidades!',
+                    created_at: new Date().toISOString(),
+                    is_urgent: false,
+                  });
+                } else if (res.error) {
+                  setFeedback({ type: 'error', msg: res.error });
+                }
+              }}
+              className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <Bell size={15} />
+              {activatingPush ? 'Ativando...' : 'Ativar Notificações na Barra do Aparelho'}
+            </button>
+          )}
         </div>
 
         {/* 3. Central de Apoio & Chamados com o Gestor */}

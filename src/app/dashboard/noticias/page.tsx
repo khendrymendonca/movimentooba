@@ -5,6 +5,7 @@ import { Plus, Image as ImageIcon, FileText, Trash2, Upload, ArrowLeft, Edit3, X
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { sanitizeText, validateSafeUpload, parseNewsRow } from '@/utils/donationRules';
+import { triggerRemotePushBroadcast } from '@/lib/pushNotifications';
 
 function renderContentWithLinks(text?: string) {
   if (!text) return null;
@@ -210,14 +211,28 @@ export default function NoticiasADM() {
         .eq('id', editingPostId);
       error = res.error;
     } else {
-      const res = await supabase.from('news').insert([
-        {
-          title: cleanTitle,
-          content: structuredContent,
-          author_id: userId,
-        },
-      ]);
+      const res = await supabase
+        .from('news')
+        .insert([
+          {
+            title: cleanTitle,
+            content: structuredContent,
+            author_id: userId,
+          },
+        ])
+        .select('id')
+        .maybeSingle();
       error = res.error;
+
+      if (!error) {
+        triggerRemotePushBroadcast({
+          id: res.data?.id ? `news-${res.data.id}` : `news-${Date.now()}`,
+          title: `📰 ${cleanTitle}`,
+          message: cleanSubtitle || cleanContent.slice(0, 140),
+          link: '/doador#novidades',
+          is_urgent: false,
+        });
+      }
     }
 
     setSaving(false);

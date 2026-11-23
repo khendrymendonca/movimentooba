@@ -10,6 +10,7 @@ import {
   parseSafeDate,
   parseNewsRow,
 } from '@/utils/donationRules';
+import { triggerRemotePushBroadcast } from '@/lib/pushNotifications';
 
 const CAMPAIGN_PREFIX = '[MUTIRAO] ';
 const SUPPORT_PREFIX = '[SOS] ';
@@ -193,6 +194,16 @@ export async function createGroupCampaign(
       updated_by: userId || null,
     },
   ]);
+
+  if (!error) {
+    const dStr = parseSafeDate(campaign.campaign_date)?.toLocaleDateString('pt-BR') || campaign.campaign_date;
+    await createSystemNotice(
+      supabase,
+      `📅 Novo Mutirão: ${cleanTitle} (${dStr})`,
+      `Novo mutirão de doação agendado para ${dStr} às ${payload.campaign_time} em ${payload.location}. Confirme sua presença no aplicativo (limite de 20 vagas)!`,
+      userId
+    );
+  }
 
   return { error: error ? error.message : null };
 }
@@ -466,35 +477,113 @@ export async function deleteSupportCampaign(
  * ============================================================================
  */
 
+export interface ScheduledSystemNotice {
+  id: string;
+  title: string;
+  message: string;
+  created_at: string;
+  scheduled_for?: string | null;
+}
+
 /**
- * Publica um comunicado ou aviso de ajuste no aplicativo.
+ * Publica ou agenda um comunicado/notificação no aplicativo.
+ * Se scheduledFor (ISO string) for informado no futuro, a notificação fica programada e
+ * só aparece na barra de notificações e nos pop-ups dos usuários quando o horário chegar.
  */
 export async function createSystemNotice(
   supabase: SupabaseClient,
   title: string,
   message: string,
-  userId?: string
+  userId?: string,
+  scheduledFor?: string | null
 ): Promise<{ error: string | null }> {
   try {
     const cleanTitle = sanitizeText(title, 140);
+    const cleanMessage = sanitizeText(message, 600);
+    const isFutureSchedule =
+      Boolean(scheduledFor) && new Date(scheduledFor!).getTime() > Date.now() + 15000;
+
     const payload = {
       title: cleanTitle,
-      message: sanitizeText(message, 600),
-      created_at: new Date().toISOString(),
+      message: cleanMessage,
+      created_at: isFutureSchedule ? new Date(scheduledFor!).toISOString() : new Date().toISOString(),
+      ...(scheduledFor ? { scheduled_for: new Date(scheduledFor).toISOString() } : {}),
     };
 
-    const { error } = await supabase.from('donation_guides').insert([
-      {
-        title: `${NOTICE_PREFIX}${cleanTitle}`,
-        content: JSON.stringify(payload),
-        updated_by: userId || null,
-      },
-    ]);
+    const { data, error } = await supabase
+      .from('donation_guides')
+      .insert([
+        {
+          title: `${NOTICE_PREFIX}${cleanTitle}`,
+          content: JSON.stringify(payload),
+          updated_by: userId || null,
+        },
+      ])
+      .select('id')
+      .maybeSingle();
+
+    // Só envia Web Push imediato se não for agendada para o futuro
+    if (!error && !isFutureSchedule) {
+      triggerRemotePushBroadcast({
+        id: data?.id || `notice-${Date.now()}`,
+        title: cleanTitle,
+        message: cleanMessage,
+        link: '/doador',
+        is_urgent: cleanTitle.includes('🚨') || cleanTitle.toLowerCase().includes('sos'),
+      });
+    }
 
     return { error: error ? error.message : null };
   } catch (e: any) {
     return { error: e?.message || 'Erro ao criar aviso.' };
   }
+}
+
+/**
+ * Lista todas as notificações enviadas ou programadas pelo Admin
+ */
+export async function fetchAdminSystemNotices(
+  supabase: SupabaseClient
+): Promise<ScheduledSystemNotice[]> {
+  try {
+    const { data, error } = await supabase
+      .from('donation_guides')
+      .select('*')
+      .like('title', `${NOTICE_PREFIX}%`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error || !data) return [];
+
+    const list: ScheduledSystemNotice[] = [];
+    for (const row of data) {
+      try {
+        const parsed = JSON.parse(row.content);
+        const rawTitle = parsed.title || row.title.replace(NOTICE_PREFIX, '');
+        list.push({
+          id: row.id,
+          title: sanitizeText(rawTitle, 140),
+          message: sanitizeText(parsed.message || '', 600),
+          created_at: parsed.created_at || row.created_at,
+          scheduled_for: parsed.scheduled_for || null,
+        });
+      } catch {}
+    }
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Remove uma notificação enviada ou programada pelo Admin
+ */
+export async function deleteSystemNotice(
+  supabase: SupabaseClient,
+  id: string
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('donation_guides').delete().eq('id', id);
+  return { error: error ? error.message : null };
 }
 
 const USER_NOTIF_PREFIX = '[NOTIF_USER] ';
@@ -507,21 +596,36 @@ export async function sendUserBadgeNotification(
   adminId?: string
 ) {
   try {
+    const cleanTitle = sanitizeText(badgeTitle, 140);
+    const cleanMsg = sanitizeText(badgeMessage, 600);
     const payload = {
       target_user_id: userId,
       type: 'medalha',
-      title: sanitizeText(badgeTitle, 140),
-      message: sanitizeText(badgeMessage, 600),
+      title: cleanTitle,
+      message: cleanMsg,
       link: '/doador/colecao',
       created_at: new Date().toISOString(),
     };
-    await supabase.from('donation_guides').insert([
-      {
-        title: `${USER_NOTIF_PREFIX}${userId}`,
-        content: JSON.stringify(payload),
-        updated_by: adminId || null,
-      },
-    ]);
+    const { data } = await supabase
+      .from('donation_guides')
+      .insert([
+        {
+          title: `${USER_NOTIF_PREFIX}${userId}`,
+          content: JSON.stringify(payload),
+          updated_by: adminId || null,
+        },
+      ])
+      .select('id')
+      .maybeSingle();
+
+    triggerRemotePushBroadcast({
+      id: data?.id || `badge-${Date.now()}`,
+      title: cleanTitle,
+      message: cleanMsg,
+      link: '/doador/colecao',
+      is_urgent: true,
+      targetUserId: userId,
+    });
   } catch (e) {
     console.error('Erro ao enviar notificacao de medalha:', e);
   }
@@ -544,13 +648,13 @@ export async function fetchUnifiedNotifications(
   }
 ): Promise<AppNotification[]> {
   try {
-    const [noticesRes, supportRes, newsRes, userNotifsRes] = await Promise.all([
+    const [noticesRes, supportRes, newsRes, userNotifsRes, groupCampaignsRes] = await Promise.all([
       supabase
         .from('donation_guides')
         .select('*')
         .like('title', `${NOTICE_PREFIX}%`)
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(15),
       fetchSupportCampaigns(supabase),
       supabase
         .from('news')
@@ -566,21 +670,23 @@ export async function fetchUnifiedNotifications(
             .order('created_at', { ascending: false })
             .limit(10)
         : Promise.resolve({ data: [] }),
+      fetchGroupCampaigns(supabase, userProfile?.id).catch(() => []),
     ]);
 
     const notifications: AppNotification[] = [];
 
-    // 1. Notificações pessoais de medalhas especiais liberadas pelo administrador
+    // 1. Notificações pessoais de medalhas especiais e chamados diretos ao membro
     if (userNotifsRes.data) {
       for (const row of userNotifsRes.data) {
         try {
           const parsed = JSON.parse(row.content);
+          const notifType = parsed.type === 'chamado' ? 'chamado' : 'medalha';
           notifications.push({
             id: row.id,
-            type: 'medalha',
-            title: sanitizeText(parsed.title || 'Nova Medalha Liberada!', 140),
+            type: notifType,
+            title: sanitizeText(parsed.title || 'Nova Atualização!', 140),
             message: sanitizeText(parsed.message || '', 600),
-            link: parsed.link || '/doador/colecao',
+            link: parsed.link || (notifType === 'chamado' ? '/doador/apoio' : '/doador/colecao'),
             created_at: parsed.created_at || row.created_at,
             is_urgent: true,
           });
@@ -621,8 +727,9 @@ export async function fetchUnifiedNotifications(
       });
     }
 
-    // 2. Avisos e Comunicados do Sistema (ignora avisos de teste)
+    // 2. Avisos e Comunicados do Sistema (ignora avisos de teste e avisos programados para o futuro)
     if (noticesRes.data) {
+      const nowMs = Date.now();
       for (const row of noticesRes.data) {
         try {
           const parsed = JSON.parse(row.content);
@@ -630,12 +737,19 @@ export async function fetchUnifiedNotifications(
           if (rawTitle.toLowerCase().includes('teste') || (parsed.message && parsed.message.toLowerCase().includes('teste'))) {
             continue;
           }
+          // Se a notificação foi programada para uma data/hora futura, aguarda chegar o momento
+          if (parsed.scheduled_for) {
+            const schedTime = new Date(parsed.scheduled_for).getTime();
+            if (!isNaN(schedTime) && schedTime > nowMs) {
+              continue;
+            }
+          }
           notifications.push({
             id: row.id,
             type: 'sistema',
             title: sanitizeText(rawTitle, 140),
             message: sanitizeText(parsed.message || '', 600),
-            created_at: parsed.created_at || row.created_at,
+            created_at: parsed.scheduled_for || parsed.created_at || row.created_at,
             is_urgent: false,
           });
         } catch {
@@ -657,6 +771,63 @@ export async function fetchUnifiedNotifications(
           created_at: n.created_at,
           is_urgent: false,
         });
+      }
+    }
+
+    // 3.5. Notificações Programadas Automáticas (Prazo Biológico e Lembretes de Mutirão)
+    if (userProfile?.last_donation_date) {
+      const eligToday = checkEligibilityForDate(
+        userProfile.sex || 'M',
+        userProfile.last_donation_date,
+        new Date()
+      );
+      if (eligToday.isEligible) {
+        const cycleKey = String(userProfile.last_donation_date).split('T')[0];
+        notifications.push({
+          id: `auto-eligible-${cycleKey}`,
+          type: 'sistema',
+          title: '🩸 Seu prazo biológico completou! Você já pode doar',
+          message: 'Seu intervalo mínimo entre doações foi concluído. Confira o próximo mutirão do Movimento O Bom Amigo ou agende sua doação!',
+          link: '/doador/doacoes',
+          created_at: eligToday.nextEligibleDate
+            ? eligToday.nextEligibleDate.toISOString()
+            : new Date().toISOString(),
+          is_urgent: false,
+        });
+      }
+    }
+
+    if (Array.isArray(groupCampaignsRes) && groupCampaignsRes.length > 0) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      for (const camp of groupCampaignsRes) {
+        const campDate = parseSafeDate(camp.campaign_date);
+        if (!campDate) continue;
+        campDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.round(
+          (campDate.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (diffDays >= 0 && diffDays <= 3) {
+          const whenLabel =
+            diffDays === 0
+              ? 'é HOJE'
+              : diffDays === 1
+              ? 'é AMANHÃ'
+              : `acontece em ${diffDays} dias`;
+          notifications.push({
+            id: `auto-mutirao-reminder-${camp.id}-${diffDays === 0 ? 'today' : 'soon'}`,
+            type: 'mutirao',
+            title: `📅 Lembrete Programado: ${camp.title} ${whenLabel}!`,
+            message: `Data: ${campDate.toLocaleDateString('pt-BR')} às ${camp.campaign_time || '08:00'} em ${camp.location}. ${
+              camp.user_confirmed
+                ? 'Sua presença está confirmada!'
+                : 'Toque para conferir as vagas e confirmar presença.'
+            }`,
+            link: '/doador',
+            created_at: new Date().toISOString(),
+            is_urgent: diffDays <= 1,
+          });
+        }
       }
     }
 

@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { NotificationWatcher } from "@/components/NotificationWatcher";
 
 export default function DashboardLayout({
   children,
@@ -70,6 +71,9 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-[100dvh] bg-[#f8f9fa] flex flex-col">
+      {/* Monitor Global de Notificações na Barra do Aparelho & Pop-ups Persistentes */}
+      <NotificationWatcher />
+
       {/* Conteúdo Principal Mobile/Tablet (Idêntico ao DoadorLayout) */}
       <div className="flex-1 flex flex-col relative min-h-[100dvh]">
         <main className="flex-1 pb-24">

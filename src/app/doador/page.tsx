@@ -184,6 +184,12 @@ export default function DoadorHome() {
 
   useEffect(() => {
     loadAll();
+
+    const handleNotifsUpdated = () => {
+      loadAll();
+    };
+    window.addEventListener('oba-notifications-updated', handleNotifsUpdated);
+    return () => window.removeEventListener('oba-notifications-updated', handleNotifsUpdated);
   }, []);
 
   const handleOpenNotifications = () => {
@@ -193,6 +199,7 @@ export default function DoadorHome() {
     const readIds: string[] = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
     const updated = Array.from(new Set([...readIds, ...allIds]));
     localStorage.setItem('read_notif_ids', JSON.stringify(updated));
+    window.dispatchEvent(new Event('oba-notifications-updated'));
   };
 
   const handleDismissNotification = (id: string) => {
@@ -214,6 +221,7 @@ export default function DoadorHome() {
     if (profile?.id) {
       persistDismissedNotifications(supabase, profile.id, id);
     }
+    window.dispatchEvent(new Event('oba-notifications-updated'));
   };
 
   const handleMarkAllRead = () => {
@@ -237,6 +245,7 @@ export default function DoadorHome() {
     if (profile?.id) {
       persistDismissedNotifications(supabase, profile.id, idsToClear);
     }
+    window.dispatchEvent(new Event('oba-notifications-updated'));
   };
 
   const handleToggleRsvp = async (camp: GroupCampaign) => {

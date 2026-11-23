@@ -37,6 +37,9 @@ import {
   updateSupportCampaign,
   deleteSupportCampaign,
   createSystemNotice,
+  fetchAdminSystemNotices,
+  deleteSystemNotice,
+  ScheduledSystemNotice,
   fetchProjectConfig,
   saveProjectConfig,
   DEFAULT_PROJECT_CONFIG,
@@ -95,10 +98,12 @@ export default function Dashboard() {
   const [matchedMembers, setMatchedMembers] = useState<any[]>([]);
   const [loadingMatch, setLoadingMatch] = useState(false);
 
-  // Comunicado Geral do App
+  // Comunicado Geral / Notificação Programada do App
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
+  const [noticeScheduledFor, setNoticeScheduledFor] = useState('');
   const [savingNotice, setSavingNotice] = useState(false);
+  const [systemNotices, setSystemNotices] = useState<ScheduledSystemNotice[]>([]);
 
   // Membros & Concessão Individual de Medalhas Especiais
   const [members, setMembers] = useState<any[]>([]);
@@ -122,6 +127,7 @@ export default function Dashboard() {
       membersRes,
       badgesStoreRes,
       donationsTotalRes,
+      loadedNotices,
     ] = await Promise.all([
       supabase
         .from('profiles')
@@ -142,6 +148,7 @@ export default function Dashboard() {
         .order('name', { ascending: true }),
       fetchSpecialBadgesStore(supabase),
       supabase.from('donations').select('*', { count: 'exact', head: true }),
+      fetchAdminSystemNotices(supabase),
     ]);
 
     if (typeof donationsTotalRes.count === 'number') {
@@ -151,6 +158,7 @@ export default function Dashboard() {
     setCampaigns(loadedCampaigns);
     setSupportCampaigns(loadedSupport);
     setConfig(loadedConfig);
+    setSystemNotices(loadedNotices);
     if (membersRes.data) setMembers(membersRes.data);
     if (badgesStoreRes) setSpecialBadgesStore(badgesStoreRes.store);
     setStats({
@@ -306,22 +314,36 @@ export default function Dashboard() {
     setLoadingMatch(false);
   };
 
-  // 5. Salvar Comunicado do App
+  // 5. Salvar ou Programar Comunicado / Notificação do App
   const handleSendNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noticeTitle || !noticeMsg) return;
     setSavingNotice(true);
 
     const { data: { session } } = await supabase.auth.getSession();
-    const { error } = await createSystemNotice(supabase, noticeTitle, noticeMsg, session?.user?.id);
+    const { error } = await createSystemNotice(
+      supabase,
+      noticeTitle,
+      noticeMsg,
+      session?.user?.id,
+      noticeScheduledFor ? new Date(noticeScheduledFor).toISOString() : null
+    );
     setSavingNotice(false);
 
     if (error) {
       alert('Erro ao enviar aviso: ' + error);
     } else {
+      const wasScheduled =
+        Boolean(noticeScheduledFor) && new Date(noticeScheduledFor).getTime() > Date.now();
       setNoticeTitle('');
       setNoticeMsg('');
-      alert('Aviso enviado para a Central de Notificações de todos os membros!');
+      setNoticeScheduledFor('');
+      await loadDashboardData();
+      alert(
+        wasScheduled
+          ? 'Notificação programada com sucesso! Ela aparecerá automaticamente para os membros na data e horário escolhidos.'
+          : 'Notificação enviada imediatamente para os membros!'
+      );
     }
   };
 
@@ -857,56 +879,136 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 3. DISPARAR AVISO / NOTIFICAÇÃO DO APP */}
-        <form
-          onSubmit={handleSendNotice}
-          className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-3"
-        >
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
-              <Bell size={16} className="text-red-600" />
-              Disparar Notificação no App
-            </h2>
-            <p className="text-xs text-slate-500 font-normal mt-0.5">
-              Envie um comunicado oficial sobre atualizações ou avisos para todos os membros.
-            </p>
-          </div>
+        {/* 3. DISPARAR OU PROGRAMAR AVISO / NOTIFICAÇÃO DO APP */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4">
+          <form onSubmit={handleSendNotice} className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+                <Bell size={16} className="text-red-600" />
+                Disparar ou Programar Notificação
+              </h2>
+              <p className="text-xs text-slate-500 font-normal mt-0.5">
+                Envie um aviso agora ou programe para uma data e horário futuros. O usuário recebe na barra do celular e em pop-up ao abrir o app (podendo visualizar ou ignorar livremente).
+              </p>
+            </div>
 
-          <div>
-            <label className="block text-xs text-slate-600 mb-1 font-normal">Título do Aviso</label>
-            <input
-              type="text"
-              required
-              maxLength={120}
-              value={noticeTitle}
-              onChange={(e) => setNoticeTitle(e.target.value)}
-              placeholder="Ex: Novo mutirão agendado para o próximo sábado!"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 font-normal"
-            />
-          </div>
+            <div>
+              <label className="block text-xs text-slate-600 mb-1 font-normal">Título da Notificação</label>
+              <input
+                type="text"
+                required
+                maxLength={120}
+                value={noticeTitle}
+                onChange={(e) => setNoticeTitle(e.target.value)}
+                placeholder="Ex: Novo mutirão agendado para o próximo sábado!"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 font-normal"
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs text-slate-600 mb-1 font-normal">Mensagem</label>
-            <textarea
-              required
-              rows={2}
-              maxLength={500}
-              value={noticeMsg}
-              onChange={(e) => setNoticeMsg(e.target.value)}
-              placeholder="Escreva a mensagem que aparecerá no sino de notificações..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm text-slate-900 font-normal"
-            />
-          </div>
+            <div>
+              <label className="block text-xs text-slate-600 mb-1 font-normal">Mensagem</label>
+              <textarea
+                required
+                rows={2}
+                maxLength={500}
+                value={noticeMsg}
+                onChange={(e) => setNoticeMsg(e.target.value)}
+                placeholder="Escreva a mensagem que convidará o membro a acessar o aplicativo..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm text-slate-900 font-normal"
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={savingNotice}
-            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-normal text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-          >
-            <Bell size={14} />
-            {savingNotice ? 'Enviando...' : 'Enviar Notificação'}
-          </button>
-        </form>
+            <div>
+              <label className="block text-xs text-slate-600 mb-1 font-normal">
+                Programar para data e horário (opcional — deixe em branco para enviar agora)
+              </label>
+              <input
+                type="datetime-local"
+                value={noticeScheduledFor}
+                onChange={(e) => setNoticeScheduledFor(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm text-slate-900 font-normal"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={savingNotice}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-normal text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <Bell size={14} />
+              {savingNotice
+                ? 'Salvando...'
+                : noticeScheduledFor
+                ? 'Programar Notificação'
+                : 'Enviar Notificação Agora'}
+            </button>
+          </form>
+
+          {/* Lista de Notificações Programadas e Enviadas */}
+          {systemNotices.length > 0 && (
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                Notificações Enviadas & Programadas
+              </p>
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {systemNotices.map((item) => {
+                  const isFuture =
+                    Boolean(item.scheduled_for) &&
+                    new Date(item.scheduled_for!).getTime() > Date.now();
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 flex items-start justify-between gap-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                              isFuture
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {isFuture
+                              ? `⏰ Programada para ${new Date(item.scheduled_for!).toLocaleString('pt-BR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}`
+                              : `Enviada em ${new Date(item.created_at).toLocaleDateString('pt-BR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                })}`}
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-900 truncate">
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] text-slate-600 font-normal line-clamp-2 mt-0.5">
+                          {item.message}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm('Deseja remover esta notificação?')) return;
+                          await deleteSystemNotice(supabase, item.id);
+                          await loadDashboardData();
+                        }}
+                        className="p-1 text-slate-400 hover:text-red-600 transition-colors shrink-0"
+                        title="Excluir notificação"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* 4. CANAL NO WHATSAPP E HEMOCENTRO */}
         <form
