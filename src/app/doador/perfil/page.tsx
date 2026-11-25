@@ -60,7 +60,27 @@ export default function PerfilDoador() {
   const router = useRouter();
 
   useEffect(() => {
-    setNotifPermission(getNotificationPermission());
+    const syncPerm = () => {
+      setNotifPermission(getNotificationPermission());
+    };
+    syncPerm();
+    window.addEventListener('focus', syncPerm);
+    document.addEventListener('visibilitychange', syncPerm);
+
+    if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
+      navigator.permissions
+        .query({ name: 'notifications' as PermissionName })
+        .then((status) => {
+          syncPerm();
+          status.onchange = syncPerm;
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('focus', syncPerm);
+      document.removeEventListener('visibilitychange', syncPerm);
+    };
   }, []);
 
   useEffect(() => {
@@ -516,12 +536,50 @@ export default function PerfilDoador() {
             Receba alertas na barra de notificações do seu aparelho sempre que houver um pedido urgente da Rede SOS, novo mutirão ou medalha liberada.
           </p>
 
-          {notifPermission === 'granted' ? (
-            <div className="space-y-2">
+          {notifPermission === 'denied' ? (
+            <div className="bg-red-50 border border-red-200 p-3 rounded-xl text-xs text-red-800 leading-relaxed">
+              As notificações foram bloqueadas nas configurações do navegador. Toque no ícone de cadeado ao lado do endereço do site e altere <strong>Notificações</strong> para <strong>Permitir</strong>.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {notifPermission !== 'granted' && (
+                <button
+                  type="button"
+                  disabled={activatingPush}
+                  onClick={async () => {
+                    setActivatingPush(true);
+                    const res = await requestAndSubscribePush(supabase, userProfile.id);
+                    setActivatingPush(false);
+                    setNotifPermission(getNotificationPermission());
+                    if (res.granted) {
+                      await showSystemTrayNotification(
+                        {
+                          id: `welcome-profile-push-${Date.now()}`,
+                          type: 'sistema',
+                          title: '🔔 Notificações Ativadas!',
+                          message: 'Você receberá alertas na barra do seu celular sempre que houver novidades!',
+                          created_at: new Date().toISOString(),
+                          is_urgent: false,
+                        },
+                        { force: true }
+                      );
+                    } else if (res.error) {
+                      setFeedback({ type: 'error', msg: res.error });
+                    }
+                  }}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Bell size={15} />
+                  {activatingPush ? 'Ativando...' : 'Ativar Notificações na Barra do Aparelho'}
+                </button>
+              )}
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-50/70 border border-emerald-200 p-3 rounded-xl">
                 <span className="text-xs text-emerald-800 font-medium flex items-center gap-1.5">
                   <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-                  Seu aparelho está pronto para receber alertas na barra!
+                  {notifPermission === 'granted'
+                    ? 'Seu aparelho está pronto para receber alertas na barra!'
+                    : 'Autorize e faça um teste na barra do seu aparelho:'}
                 </span>
                 <button
                   type="button"
@@ -531,7 +589,15 @@ export default function PerfilDoador() {
                     setTestingPush(true);
                     setTestPushSuccess(false);
                     try {
-                      await requestAndSubscribePush(supabase, userProfile?.id);
+                      const subRes = await requestAndSubscribePush(supabase, userProfile?.id);
+                      setNotifPermission(getNotificationPermission());
+                      if (!subRes.granted) {
+                        if (subRes.error) {
+                          setFeedback({ type: 'error', msg: subRes.error });
+                        }
+                        return;
+                      }
+
                       const testId = `oba-test-${Date.now()}`;
 
                       // Tenta enviar via Web Push remoto apenas para o próprio usuário (targetUserId: userProfile.id)
@@ -584,37 +650,6 @@ export default function PerfilDoador() {
                 </p>
               )}
             </div>
-          ) : notifPermission === 'denied' ? (
-            <div className="bg-red-50 border border-red-200 p-3 rounded-xl text-xs text-red-800 leading-relaxed">
-              As notificações foram bloqueadas nas configurações do navegador. Toque no ícone de cadeado ao lado do endereço do site e altere <strong>Notificações</strong> para <strong>Permitir</strong>.
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={activatingPush}
-              onClick={async () => {
-                setActivatingPush(true);
-                const res = await requestAndSubscribePush(supabase, userProfile.id);
-                setActivatingPush(false);
-                setNotifPermission(getNotificationPermission());
-                if (res.granted) {
-                  await showSystemTrayNotification({
-                    id: `welcome-profile-push-${Date.now()}`,
-                    type: 'sistema',
-                    title: '🔔 Notificações Ativadas!',
-                    message: 'Você receberá alertas na barra do seu celular sempre que houver novidades!',
-                    created_at: new Date().toISOString(),
-                    is_urgent: false,
-                  });
-                } else if (res.error) {
-                  setFeedback({ type: 'error', msg: res.error });
-                }
-              }}
-              className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <Bell size={15} />
-              {activatingPush ? 'Ativando...' : 'Ativar Notificações na Barra do Aparelho'}
-            </button>
           )}
         </div>
 
