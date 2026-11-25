@@ -24,6 +24,7 @@ import {
   getNotificationPermission,
   requestAndSubscribePush,
   showSystemTrayNotification,
+  ensurePushSubscriptionSynced,
 } from '@/lib/pushNotifications';
 
 function renderMessageWithLinks(text?: string) {
@@ -120,13 +121,31 @@ export function NotificationWatcher() {
         }
       }
 
+      // Se o usuário já autorizou o Chrome (Notification.permission === 'granted'),
+      // garante que a assinatura Web Push esteja registrada no Service Worker e salva no banco
+      // para receber notificações mesmo fora do app!
+      if (getNotificationPermission() === 'granted') {
+        await ensurePushSubscriptionSynced(supabase, userId);
+      }
+
       const allNotifs = await fetchUnifiedNotifications(supabase, currentProf || { id: userId });
 
-      // IDs que o usuário já viu, fechou ou ignorou no app
+      // 1. Dispara na barra de notificações do aparelho (fora do app) qualquer notificação que ainda não tenha sido enviada para a barra do sistema,
+      //    independentemente de o usuário já ter aberto o sino dentro do app!
       const dbClearedIds = getUserDismissedNotificationIds(currentProf);
       const localClearedIds: string[] = JSON.parse(
         localStorage.getItem('cleared_notif_ids') || '[]'
       );
+      const clearedSet = new Set([...dbClearedIds, ...localClearedIds]);
+      const activeNotifsForTray = allNotifs.filter((n) => !clearedSet.has(n.id));
+
+      if (getNotificationPermission() === 'granted') {
+        for (const notif of activeNotifsForTray) {
+          await showSystemTrayNotification(notif);
+        }
+      }
+
+      // 2. Para o pop-up interno do app, filtra também as que já foram lidas ou dispensadas no pop-up
       const localReadIds: string[] = JSON.parse(
         localStorage.getItem('read_notif_ids') || '[]'
       );
@@ -134,24 +153,15 @@ export function NotificationWatcher() {
         localStorage.getItem('dismissed_popup_ids') || '[]'
       );
 
-      const alreadyHandledSet = new Set([
+      const alreadyHandledInAppSet = new Set([
         ...dbClearedIds,
         ...localClearedIds,
         ...localReadIds,
         ...dismissedPopupIds,
       ]);
 
-      const pendingForUser = allNotifs.filter((n) => !alreadyHandledSet.has(n.id));
-
-      // 1. Dispara na barra de notificações do aparelho (caso o usuário tenha dado permissão)
-      if (getNotificationPermission() === 'granted') {
-        for (const notif of pendingForUser) {
-          await showSystemTrayNotification(notif);
-        }
-      }
-
-      // 2. Coloca na fila do pop-up do app apenas as notificações que o usuário ainda não viu nem ignorou
-      setPopupQueue(pendingForUser);
+      const pendingForPopup = allNotifs.filter((n) => !alreadyHandledInAppSet.has(n.id));
+      setPopupQueue(pendingForPopup);
     } catch (e) {
       console.warn('Erro ao sincronizar notificações:', e);
     } finally {
@@ -244,6 +254,10 @@ export function NotificationWatcher() {
       const readIds: string[] = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
       localStorage.setItem('read_notif_ids', JSON.stringify(Array.from(new Set([...readIds, notif.id]))));
       window.dispatchEvent(new Event('oba-notifications-updated'));
+      if (notif.type === 'noticia' && notif.id.startsWith('news-')) {
+        const newsId = notif.id.replace('news-', '');
+        window.dispatchEvent(new CustomEvent('oba-open-news', { detail: { newsId } }));
+      }
       router.push(notif.link);
     }
   };

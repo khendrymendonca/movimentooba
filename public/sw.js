@@ -2,7 +2,7 @@
 // Habilita PWA Standalone (Sem barra de endereço de URL no navegador)
 // e Notificações Web Push Nativas na Barra de Status do Celular/Computador
 
-const CACHE_NAME = 'oba-pwa-v2';
+const CACHE_NAME = 'oba-pwa-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -81,11 +81,12 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(payload.title, options));
 });
 
-// Ao tocar na notificação da barra do celular/computador, abre ou foca o aplicativo
+// Ao tocar na notificação da barra do celular/computador, abre ou foca o aplicativo na rota/notícia exata
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/doador';
+  const rawTargetUrl = (event.notification.data && event.notification.data.url) || '/doador';
+  const fullTargetUrl = new URL(rawTargetUrl, self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -93,13 +94,13 @@ self.addEventListener('notificationclick', (event) => {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           client.focus();
           if ('navigate' in client) {
-            return client.navigate(targetUrl);
+            return client.navigate(fullTargetUrl);
           }
           return client;
         }
       }
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        return self.clients.openWindow(fullTargetUrl);
       }
     })
   );

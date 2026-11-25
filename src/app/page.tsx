@@ -9,15 +9,45 @@ import {
   Info,
   MessageCircle,
   LogIn,
+  Newspaper,
+  ExternalLink,
+  X,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { fetchGroupCampaigns, fetchPublicDonationStats, DonationStats } from '@/lib/campaigns';
-import { GroupCampaign, parseSafeDate } from '@/utils/donationRules';
+import { GroupCampaign, parseSafeDate, parseNewsRow } from '@/utils/donationRules';
 
 const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029VbE55L14yltHPKvKYE1z';
+
+function renderContentWithLinks(text?: string) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(urlRegex);
+  return parts.map((part, idx) => {
+    if (/^(https?:\/\/|www\.)/i.test(part)) {
+      const cleanUrl = part.replace(/[.,;!?)]+$/, '');
+      const trailing = part.slice(cleanUrl.length);
+      const href = cleanUrl.toLowerCase().startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+      return (
+        <span key={idx}>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-red-600 hover:text-red-700 underline break-all font-medium"
+          >
+            {cleanUrl}
+          </a>
+          {trailing}
+        </span>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
 
 export default function LandingPage() {
   const router = useRouter();
@@ -25,6 +55,8 @@ export default function LandingPage() {
 
   const [isMobileView, setIsMobileView] = useState(false);
   const [campaigns, setCampaigns] = useState<GroupCampaign[]>([]);
+  const [newsFeed, setNewsFeed] = useState<any[]>([]);
+  const [selectedNewsModal, setSelectedNewsModal] = useState<any | null>(null);
   const [hasSession, setHasSession] = useState(false);
   const [donationStats, setDonationStats] = useState<DonationStats>({
     totalDonations: 0,
@@ -61,10 +93,15 @@ export default function LandingPage() {
 
   useEffect(() => {
     async function loadPublicData() {
-      const [loadedCampaigns, sessionRes, statsRes] = await Promise.all([
+      const [loadedCampaigns, sessionRes, statsRes, newsRes] = await Promise.all([
         fetchGroupCampaigns(supabase).catch(() => []),
         supabase.auth.getSession().catch(() => ({ data: { session: null } })),
         fetchPublicDonationStats(supabase).catch(() => null),
+        supabase
+          .from('news')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(6),
       ]);
 
       const today = new Date();
@@ -77,6 +114,19 @@ export default function LandingPage() {
       setCampaigns(upcoming.length > 0 ? upcoming : loadedCampaigns);
       setHasSession(!!sessionRes?.data?.session);
       if (statsRes) setDonationStats(statsRes);
+      if (newsRes?.data) {
+        const parsedNews = newsRes.data.map(parseNewsRow);
+        setNewsFeed(parsedNews);
+
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const targetNewsId = params.get('noticia');
+          if (targetNewsId) {
+            const found = parsedNews.find((n: any) => String(n.id) === String(targetNewsId));
+            if (found) setSelectedNewsModal(found);
+          }
+        }
+      }
     }
     loadPublicData();
   }, []);
@@ -242,6 +292,77 @@ export default function LandingPage() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Notícias e Comunicados do Movimento */}
+        {newsFeed.length > 0 && (
+          <section id="noticias" className="py-16 bg-white border-t border-slate-100">
+            <div className="max-w-6xl mx-auto px-6">
+              <div className="text-center max-w-2xl mx-auto mb-10">
+                <span className="text-xs uppercase tracking-widest text-red-500 font-medium">
+                  Mural do Movimento
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-semibold text-slate-900 mt-1">
+                  Notícias e Novidades
+                </h2>
+                <p className="text-sm sm:text-base text-slate-600 mt-2 font-normal">
+                  Acompanhe as ações, mutirões e comunicados recentes da nossa comunidade.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {newsFeed.map((item) => (
+                  <article
+                    key={item.id}
+                    onClick={() => setSelectedNewsModal(item)}
+                    className="bg-slate-50/70 hover:bg-white rounded-3xl border border-slate-200/80 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col justify-between group"
+                  >
+                    <div>
+                      {item.image_url ? (
+                        <div className="w-full h-44 bg-slate-100 overflow-hidden border-b border-slate-100">
+                          <img
+                            src={item.image_url}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-32 bg-slate-100/80 border-b border-slate-100 flex items-center justify-center text-slate-300">
+                          <Newspaper size={28} />
+                        </div>
+                      )}
+
+                      <div className="p-5">
+                        <span className="text-[11px] text-slate-400 font-normal block mb-1">
+                          {new Date(item.created_at).toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric',
+                          })}
+                        </span>
+                        <h3 className="text-base font-semibold text-slate-900 group-hover:text-red-600 transition-colors line-clamp-2 leading-snug">
+                          {item.title}
+                        </h3>
+                        {item.subtitle && (
+                          <p className="text-xs text-red-600 font-medium mt-1 line-clamp-1">
+                            {item.subtitle}
+                          </p>
+                        )}
+                        <p className="text-xs text-slate-600 font-normal line-clamp-3 mt-2 leading-relaxed">
+                          {item.content}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="px-5 pb-4 pt-2 flex items-center justify-between text-xs text-red-600 font-medium">
+                      <span>Ler notícia completa</span>
+                      <span>→</span>
+                    </div>
+                  </article>
+                ))}
               </div>
             </div>
           </section>
@@ -426,6 +547,87 @@ export default function LandingPage() {
           </div>
         </section>
       </main>
+
+      {/* Modal de Leitura Completa da Notícia na Página do Projeto */}
+      {selectedNewsModal && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4"
+          onClick={() => setSelectedNewsModal(null)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85dvh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white">
+              <span className="text-xs font-semibold text-slate-500">
+                {new Date(selectedNewsModal.created_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+                {selectedNewsModal.author_name ? ` • Por ${selectedNewsModal.author_name}` : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedNewsModal(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {selectedNewsModal.image_url && (
+                <div className="w-full rounded-2xl overflow-hidden border border-slate-100 bg-slate-50 max-h-64 flex items-center justify-center">
+                  <img
+                    src={selectedNewsModal.image_url}
+                    alt={selectedNewsModal.title}
+                    className="w-full max-h-64 object-cover"
+                  />
+                </div>
+              )}
+
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                  {selectedNewsModal.title}
+                </h2>
+                {selectedNewsModal.subtitle && (
+                  <p className="text-xs sm:text-sm text-red-600 font-medium mt-1">
+                    {selectedNewsModal.subtitle}
+                  </p>
+                )}
+              </div>
+
+              <div className="text-xs sm:text-sm text-slate-700 font-normal whitespace-pre-line leading-relaxed">
+                {renderContentWithLinks(selectedNewsModal.content)}
+              </div>
+
+              {selectedNewsModal.attachment_url && (
+                <a
+                  href={selectedNewsModal.attachment_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold transition-colors"
+                >
+                  <ExternalLink size={14} />
+                  <span>Abrir Documento Anexo (PDF)</span>
+                </a>
+              )}
+            </div>
+
+            <div className="shrink-0 px-5 py-3.5 bg-white border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSelectedNewsModal(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="bg-slate-50 border-t border-slate-200/80 py-12 text-center">

@@ -143,7 +143,22 @@ export default function DoadorHome() {
       userId ? fetchUserProductOrders(supabase, userId).catch(() => []) : Promise.resolve([]),
     ]);
 
-    if (newsData) setFeed(newsData.map(parseNewsRow));
+    if (newsData) {
+      const parsedFeed = newsData.map(parseNewsRow);
+      setFeed(parsedFeed);
+
+      // Se a URL veio com ?noticia=<id> (ex.: clicou na notificação da barra do celular ou no pop-up), abre a matéria de cara!
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const targetNewsId = params.get('noticia');
+        if (targetNewsId) {
+          const found = parsedFeed.find((item) => String(item.id) === String(targetNewsId));
+          if (found) {
+            setSelectedNewsModal(found);
+          }
+        }
+      }
+    }
     if (loadedProducts) setOfficialProducts(loadedProducts.filter(isProductVisibleToMembers));
     if (loadedUserOrders) setUserOrders(loadedUserOrders);
 
@@ -191,6 +206,20 @@ export default function DoadorHome() {
     window.addEventListener('oba-notifications-updated', handleNotifsUpdated);
     return () => window.removeEventListener('oba-notifications-updated', handleNotifsUpdated);
   }, []);
+
+  useEffect(() => {
+    const handleOpenNewsEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ newsId?: string }>;
+      const targetId = customEvent.detail?.newsId;
+      if (!targetId) return;
+      const found = feed.find((item) => String(item.id) === String(targetId));
+      if (found) {
+        setSelectedNewsModal(found);
+      }
+    };
+    window.addEventListener('oba-open-news', handleOpenNewsEvent);
+    return () => window.removeEventListener('oba-open-news', handleOpenNewsEvent);
+  }, [feed]);
 
   const handleOpenNotifications = () => {
     setIsNotifOpen(true);
@@ -975,6 +1004,15 @@ export default function DoadorHome() {
         notifications={notifications}
         onMarkAllAsRead={handleMarkAllRead}
         onDismiss={handleDismissNotification}
+        onSelectNotification={(item) => {
+          if (item.type === 'noticia' && item.id.startsWith('news-')) {
+            const newsId = item.id.replace('news-', '');
+            const found = feed.find((n) => String(n.id) === String(newsId));
+            if (found) {
+              setSelectedNewsModal(found);
+            }
+          }
+        }}
       />
     </div>
   );

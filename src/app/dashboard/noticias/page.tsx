@@ -229,7 +229,9 @@ export default function NoticiasADM() {
           id: res.data?.id ? `news-${res.data.id}` : `news-${Date.now()}`,
           title: `📰 ${cleanTitle}`,
           message: cleanSubtitle || cleanContent.slice(0, 140),
-          link: '/doador#novidades',
+          link: res.data?.id
+            ? `/doador?noticia=${encodeURIComponent(res.data.id)}#novidades`
+            : '/doador#novidades',
           is_urgent: false,
         });
       }

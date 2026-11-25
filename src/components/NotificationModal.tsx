@@ -49,6 +49,7 @@ interface NotificationModalProps {
   onClose: () => void;
   onMarkAllAsRead?: () => void;
   onDismiss?: (id: string) => void;
+  onSelectNotification?: (item: AppNotification) => void;
 }
 
 export function NotificationModal({
@@ -57,6 +58,7 @@ export function NotificationModal({
   onClose,
   onMarkAllAsRead,
   onDismiss,
+  onSelectNotification,
 }: NotificationModalProps) {
   if (!isOpen) return null;
 
@@ -205,10 +207,22 @@ export function NotificationModal({
                         <div className="mt-2">
                           <Link
                             href={item.link}
-                            onClick={onClose}
+                            onClick={(e) => {
+                              if (onSelectNotification) {
+                                onSelectNotification(item);
+                              }
+                              if (item.type === 'noticia' && item.id.startsWith('news-')) {
+                                const newsId = item.id.replace('news-', '');
+                                window.dispatchEvent(
+                                  new CustomEvent('oba-open-news', { detail: { newsId } })
+                                );
+                              }
+                              onClose();
+                            }}
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 hover:text-red-700 underline"
                           >
-                            Ver detalhes <ExternalLink size={11} />
+                            {item.type === 'noticia' ? 'Ler notícia' : 'Ver detalhes'}{' '}
+                            <ExternalLink size={11} />
                           </Link>
                         </div>
                       )}

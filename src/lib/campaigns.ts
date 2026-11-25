@@ -524,8 +524,9 @@ export async function createSystemNotice(
 
     // Só envia Web Push imediato se não for agendada para o futuro
     if (!error && !isFutureSchedule) {
+      const notifId = data?.id || `notice-${Date.now()}`;
       triggerRemotePushBroadcast({
-        id: data?.id || `notice-${Date.now()}`,
+        id: notifId,
         title: cleanTitle,
         message: cleanMessage,
         link: '/doador',
@@ -659,7 +660,6 @@ export async function fetchUnifiedNotifications(
       supabase
         .from('news')
         .select('*')
-        .eq('is_published', true)
         .order('created_at', { ascending: false })
         .limit(8),
       userProfile?.id
@@ -767,7 +767,7 @@ export async function fetchUnifiedNotifications(
           type: 'noticia',
           title: n.title,
           message: n.subtitle || (n.content ? n.content.slice(0, 120) + '...' : 'Confira no Mural.'),
-          link: '/doador#novidades',
+          link: `/doador?noticia=${encodeURIComponent(n.id)}#novidades`,
           created_at: n.created_at,
           is_urgent: false,
         });

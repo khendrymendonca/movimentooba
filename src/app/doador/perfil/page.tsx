@@ -30,6 +30,7 @@ import {
   getNotificationPermission,
   requestAndSubscribePush,
   showSystemTrayNotification,
+  triggerRemotePushBroadcast,
 } from '@/lib/pushNotifications';
 
 export default function PerfilDoador() {
@@ -522,14 +523,33 @@ export default function PerfilDoador() {
               <button
                 type="button"
                 onClick={async () => {
-                  await showSystemTrayNotification({
-                    id: `test-push-${Date.now()}`,
-                    type: 'sistema',
+                  await requestAndSubscribePush(supabase, userProfile?.id);
+                  const testId = `test-push-${Date.now()}`;
+                  const shownLocal = await showSystemTrayNotification(
+                    {
+                      id: testId,
+                      type: 'sistema',
+                      title: '🔔 Teste de Notificação O Bom Amigo',
+                      message: 'Tudo certo! As notificações estão aparecendo fora do app (na barra do seu aparelho/Chrome).',
+                      created_at: new Date().toISOString(),
+                      is_urgent: true,
+                    },
+                    { force: true }
+                  );
+                  await triggerRemotePushBroadcast({
+                    id: testId,
                     title: '🔔 Teste de Notificação O Bom Amigo',
-                    message: 'Tudo certo! As notificações estão aparecendo na barra do seu aparelho.',
-                    created_at: new Date().toISOString(),
-                    is_urgent: false,
+                    message: 'Tudo certo! As notificações estão aparecendo fora do app (na barra do seu aparelho/Chrome).',
+                    link: '/doador/perfil',
+                    is_urgent: true,
+                    targetUserId: userProfile?.id,
                   });
+                  if (shownLocal) {
+                    setFeedback({
+                      type: 'success',
+                      msg: 'Alerta enviado para a barra de notificações do seu aparelho/Chrome!',
+                    });
+                  }
                 }}
                 className="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-semibold transition-colors shrink-0 cursor-pointer"
               >

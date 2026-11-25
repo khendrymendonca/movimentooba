@@ -6,6 +6,8 @@ export const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
   'BFzmYIr7qrRpwsm8Gdch2Gz0IUFTkGdZO_9H2TmbOGIVWmz1n1HcSbiwZd-A6hDhDy3o3Uk64IQvHZRBkQ8MP_A';
 
+const PUSH_SUBS_GUIDE_TITLE = '[PUSH_SUBS]';
+
 /**
  * Converte uma string Base64 URL-safe em Uint8Array para o PushManager.subscribe()
  */
@@ -25,7 +27,7 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
  */
 export function isNotificationSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  return 'Notification' in window && 'serviceWorker' in navigator;
+  return 'Notification' in window;
 }
 
 /**
@@ -34,6 +36,65 @@ export function isNotificationSupported(): boolean {
 export function getNotificationPermission(): NotificationPermission | 'unsupported' {
   if (!isNotificationSupported()) return 'unsupported';
   return Notification.permission;
+}
+
+/**
+ * Garante que o Service Worker (/sw.js) esteja registrado e ativo antes de criar assinatura Push
+ * ou exibir notificação na barra do aparelho.
+ */
+export async function ensureServiceWorkerReady(timeoutMs = 3500): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  try {
+    let reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
+      reg = await navigator.serviceWorker.register('/sw.js');
+    }
+    const readyPromise = navigator.serviceWorker.ready;
+    const timeoutPromise = new Promise<ServiceWorkerRegistration | null>((resolve) =>
+      setTimeout(() => resolve(reg || null), timeoutMs)
+    );
+    return (await Promise.race([readyPromise, timeoutPromise])) || reg || null;
+  } catch (err) {
+    console.warn('Service Worker indisponível no momento:', err);
+    return null;
+  }
+}
+
+/**
+ * Sincroniza silenciosamente a assinatura Web Push caso o usuário já tenha autorizado o Chrome anteriormente.
+ * Assim, mesmo que ele tenha clicado em "Permitir" na barra do Chrome, o aparelho fica registrado para receber Push fora do app.
+ */
+export async function ensurePushSubscriptionSynced(
+  supabase: SupabaseClient,
+  userId?: string
+): Promise<PushSubscription | null> {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') return null;
+  try {
+    const registration = await ensureServiceWorkerReady();
+    if (!registration || !('pushManager' in registration)) return null;
+
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey as unknown as BufferSource,
+      });
+    }
+
+    if (subscription && userId) {
+      const syncKey = `oba_push_synced_${userId}`;
+      const lastEndpoint = sessionStorage.getItem(syncKey);
+      if (lastEndpoint !== subscription.endpoint) {
+        await saveUserPushSubscription(supabase, userId, subscription);
+        sessionStorage.setItem(syncKey, subscription.endpoint);
+      }
+    }
+    return subscription;
+  } catch (err) {
+    console.warn('Não foi possível sincronizar PushManager em segundo plano:', err);
+    return null;
+  }
 }
 
 /**
@@ -52,26 +113,32 @@ export async function requestAndSubscribePush(
   }
 
   try {
-    const permission = await Notification.requestPermission();
+    const permission =
+      Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+
     if (permission !== 'granted') {
       return {
         granted: false,
-        error: 'Permissão de notificação negada nas configurações do aparelho.',
+        error: 'Permissão de notificação negada nas configurações do navegador.',
       };
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    let subscription = await registration.pushManager.getSubscription();
+    const registration = await ensureServiceWorkerReady();
+    let subscription: PushSubscription | null = null;
 
-    if (!subscription && 'pushManager' in registration) {
+    if (registration && 'pushManager' in registration) {
       try {
-        const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedVapidKey as unknown as BufferSource,
-        });
+        subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+          const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: convertedVapidKey as unknown as BufferSource,
+          });
+        }
       } catch (subErr) {
-        // Mesmo que o PushManager falhe em algum navegador restrito, a Notification API via ServiceWorker continua funcionando!
         console.warn('Aviso ao criar assinatura PushManager:', subErr);
       }
     }
@@ -91,6 +158,7 @@ export async function requestAndSubscribePush(
 
 /**
  * Salva a assinatura Web Push e o status de ativação em profiles.theme_preference
+ * e também sincroniza no store de push em donation_guides para alcance imediato.
  */
 export async function saveUserPushSubscription(
   supabase: SupabaseClient,
@@ -98,6 +166,8 @@ export async function saveUserPushSubscription(
   subscription: PushSubscription | null
 ): Promise<void> {
   if (!userId) return;
+  const subJson = subscription ? subscription.toJSON() : null;
+
   try {
     const { data: prof } = await supabase
       .from('profiles')
@@ -112,7 +182,6 @@ export async function saveUserPushSubscription(
       } catch {}
     }
 
-    const subJson = subscription ? subscription.toJSON() : null;
     const existingSubs: any[] = Array.isArray(existingObj.push_subscriptions)
       ? existingObj.push_subscriptions
       : [];
@@ -139,57 +208,112 @@ export async function saveUserPushSubscription(
   } catch (e) {
     console.warn('Não foi possível salvar assinatura push no perfil:', e);
   }
+
+  // Salva também no store compartilhado de assinaturas caso o usuário seja ADM ou a tabela permita
+  if (subJson && subJson.endpoint) {
+    try {
+      const { data: storeRow } = await supabase
+        .from('donation_guides')
+        .select('id, content')
+        .eq('title', PUSH_SUBS_GUIDE_TITLE)
+        .maybeSingle();
+
+      const mapObj: Record<string, any[]> =
+        storeRow?.content && storeRow.content.startsWith('{')
+          ? JSON.parse(storeRow.content)
+          : {};
+
+      const userSubs = Array.isArray(mapObj[userId]) ? mapObj[userId] : [];
+      mapObj[userId] = [
+        subJson,
+        ...userSubs.filter((s) => s && s.endpoint && s.endpoint !== subJson.endpoint),
+      ].slice(0, 5);
+
+      if (storeRow?.id) {
+        await supabase
+          .from('donation_guides')
+          .update({ content: JSON.stringify(mapObj), updated_by: userId })
+          .eq('id', storeRow.id);
+      } else {
+        await supabase
+          .from('donation_guides')
+          .insert([{ title: PUSH_SUBS_GUIDE_TITLE, content: JSON.stringify(mapObj), updated_by: userId }]);
+      }
+    } catch {}
+  }
 }
 
 /**
  * Dispara uma notificação nativa imediatamente na barra de status do celular/computador
- * usando o Service Worker ativo (funciona em Android, iOS PWA, Windows e Mac).
+ * usando o Service Worker ativo ou a Notification API direta do Chrome/Windows/Android.
  */
-export async function showSystemTrayNotification(notif: AppNotification): Promise<boolean> {
+export async function showSystemTrayNotification(
+  notif: AppNotification,
+  options?: { force?: boolean }
+): Promise<boolean> {
   if (!isNotificationSupported() || Notification.permission !== 'granted') {
     return false;
   }
 
   try {
-    // Verifica se essa notificação já foi enviada para a barra de status deste aparelho
-    const traySentKey = 'oba_tray_notified_ids_v1';
+    const traySentKey = 'oba_tray_notified_ids_v2';
     const alreadySent: string[] = JSON.parse(localStorage.getItem(traySentKey) || '[]');
-    if (alreadySent.includes(notif.id)) {
+    if (!options?.force && alreadySent.includes(notif.id)) {
       return false;
     }
 
-    // Registra como enviada para a barra de status
-    const updatedSent = Array.from(new Set([notif.id, ...alreadySent])).slice(0, 150);
-    localStorage.setItem(traySentKey, JSON.stringify(updatedSent));
+    const targetUrl = notif.link || '/doador';
+    const tag = options?.force ? `oba-force-${notif.id}-${Date.now()}` : `oba-${notif.id}`;
 
-    const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification(notif.title, {
-      body: notif.message,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      tag: `oba-${notif.id}`,
-      renotify: true,
-      requireInteraction: false,
-      vibrate: notif.is_urgent ? [300, 100, 300] : [200, 100, 200],
-      data: {
-        url: notif.link || '/doador',
-        id: notif.id,
-      },
-    } as NotificationOptions);
+    let displayed = false;
 
-    return true;
-  } catch (err) {
-    // Fallback para Notification direta caso o ServiceWorker ainda esteja inicializando
-    try {
-      new Notification(notif.title, {
+    // 1. Tenta via Service Worker Registration (padrão Android/Chrome e PWA)
+    const registration = await ensureServiceWorkerReady(2500);
+    if (registration && typeof registration.showNotification === 'function') {
+      try {
+        await registration.showNotification(notif.title, {
+          body: notif.message,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          tag,
+          renotify: true,
+          requireInteraction: false,
+          vibrate: notif.is_urgent ? [300, 100, 300] : [200, 100, 200],
+          data: {
+            url: targetUrl,
+            id: notif.id,
+          },
+        } as NotificationOptions);
+        displayed = true;
+      } catch (swErr) {
+        console.warn('Fallback de ServiceWorker.showNotification para Notification direta:', swErr);
+      }
+    }
+
+    // 2. Fallback direto via window.Notification (garante exibição no Chrome Desktop/Mobile mesmo sem SW ativo)
+    if (!displayed) {
+      const directNotif = new Notification(notif.title, {
         body: notif.message,
         icon: '/icons/icon-192.png',
-        tag: `oba-${notif.id}`,
+        tag,
       });
-      return true;
-    } catch {
-      return false;
+      directNotif.onclick = () => {
+        window.focus();
+        window.location.href = targetUrl;
+        directNotif.close();
+      };
+      displayed = true;
     }
+
+    if (displayed && !options?.force) {
+      const updatedSent = Array.from(new Set([notif.id, ...alreadySent])).slice(0, 150);
+      localStorage.setItem(traySentKey, JSON.stringify(updatedSent));
+    }
+
+    return displayed;
+  } catch (err) {
+    console.warn('Não foi possível exibir notificação na barra do sistema:', err);
+    return false;
   }
 }
 
@@ -204,15 +328,28 @@ export async function triggerRemotePushBroadcast(payload: {
   id?: string;
   is_urgent?: boolean;
   targetUserId?: string;
-}): Promise<void> {
-  if (typeof window === 'undefined') return;
+}): Promise<{ ok: boolean; sent?: number }> {
+  if (typeof window === 'undefined') return { ok: false };
   try {
-    await fetch('/api/push/send', {
+    let accessToken: string | undefined;
+    try {
+      const { createClient } = await import('@/lib/supabase');
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+      accessToken = data.session?.access_token;
+    } catch {}
+
+    const res = await fetch('/api/push/send', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify(payload),
     });
+    const data = await res.json().catch(() => ({ ok: false }));
+    return { ok: Boolean(data?.ok), sent: data?.sent || 0 };
   } catch {
-    // Ignora falha silenciosamente para não bloquear o fluxo principal
+    return { ok: false };
   }
 }

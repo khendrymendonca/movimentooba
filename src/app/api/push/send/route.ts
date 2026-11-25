@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { createClient as createSupabaseJsClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 
@@ -150,7 +151,12 @@ export async function POST(req: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    const supabase = createServerClient(
+    const authHeader = req.headers.get('authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.replace('Bearer ', '').trim()
+      : null;
+
+    let supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -160,15 +166,34 @@ export async function POST(req: NextRequest) {
           },
           setAll() {},
         },
+        ...(bearerToken
+          ? {
+              global: {
+                headers: {
+                  Authorization: `Bearer ${bearerToken}`,
+                },
+              },
+            }
+          : {}),
       }
     );
 
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = bearerToken
+      ? await supabase.auth.getUser(bearerToken)
+      : await supabase.auth.getUser();
 
-    if (!session) {
+    if (!user) {
       return NextResponse.json({ ok: false, error: 'Não autenticado' }, { status: 401 });
+    }
+
+    // Se houver SUPABASE_SERVICE_ROLE_KEY configurada, usa para buscar todas as assinaturas sem restrição de RLS
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      supabase = createSupabaseJsClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      ) as any;
     }
 
     // Busca os perfis com assinaturas Web Push registradas
@@ -181,10 +206,14 @@ export async function POST(req: NextRequest) {
       query = query.eq('id', targetUserId);
     }
 
-    const { data: profiles, error } = await query;
-    if (error || !profiles) {
-      return NextResponse.json({ ok: false, sent: 0 });
-    }
+    const [{ data: profiles }, { data: pushGuideRow }] = await Promise.all([
+      query,
+      supabase
+        .from('donation_guides')
+        .select('content')
+        .eq('title', '[PUSH_SUBS]')
+        .maybeSingle(),
+    ]);
 
     const pushPayload = JSON.stringify({
       id: id || `oba-${Date.now()}`,
@@ -196,21 +225,42 @@ export async function POST(req: NextRequest) {
       badge: '/icons/icon-192.png',
     });
 
-    const subscriptionsToSend: any[] = [];
-    for (const prof of profiles) {
-      if (prof.theme_preference && prof.theme_preference.startsWith('{')) {
-        try {
-          const parsed = JSON.parse(prof.theme_preference);
-          if (Array.isArray(parsed.push_subscriptions)) {
-            for (const sub of parsed.push_subscriptions) {
+    const endpointMap = new Map<string, any>();
+
+    if (profiles) {
+      for (const prof of profiles) {
+        if (prof.theme_preference && prof.theme_preference.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(prof.theme_preference);
+            if (Array.isArray(parsed.push_subscriptions)) {
+              for (const sub of parsed.push_subscriptions) {
+                if (sub && sub.endpoint) {
+                  endpointMap.set(sub.endpoint, sub);
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (pushGuideRow?.content && pushGuideRow.content.startsWith('{')) {
+      try {
+        const parsedGuide = JSON.parse(pushGuideRow.content);
+        for (const [uid, subs] of Object.entries(parsedGuide)) {
+          if (targetUserId && uid !== targetUserId) continue;
+          if (Array.isArray(subs)) {
+            for (const sub of subs) {
               if (sub && sub.endpoint) {
-                subscriptionsToSend.push(sub);
+                endpointMap.set(sub.endpoint, sub);
               }
             }
           }
-        } catch {}
-      }
+        }
+      } catch {}
     }
+
+    const subscriptionsToSend = Array.from(endpointMap.values());
 
     let sentCount = 0;
     await Promise.all(
