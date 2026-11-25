@@ -41,12 +41,13 @@ self.addEventListener('push', (event) => {
   if (event.data) {
     try {
       const data = event.data.json();
+      const rawTag = data.tag || data.id || payload.tag;
       payload = {
         ...payload,
         ...data,
         title: data.title || payload.title,
         body: data.body || data.message || payload.body,
-        tag: data.tag || data.id || payload.tag,
+        tag: String(rawTag).startsWith('oba-') ? String(rawTag) : `oba-${rawTag}`,
         url: data.url || data.link || payload.url,
         urgent: Boolean(data.urgent || data.is_urgent),
       };

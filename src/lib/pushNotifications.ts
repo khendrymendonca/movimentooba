@@ -263,7 +263,7 @@ export async function showSystemTrayNotification(
     }
 
     const targetUrl = notif.link || '/doador';
-    const tag = options?.force ? `oba-force-${notif.id}-${Date.now()}` : `oba-${notif.id}`;
+    const tag = notif.id.startsWith('oba-') ? notif.id : `oba-${notif.id}`;
 
     let displayed = false;
 

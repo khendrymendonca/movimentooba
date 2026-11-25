@@ -53,6 +53,8 @@ export default function PerfilDoador() {
   // Permissão de Notificações na Barra do Aparelho
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [activatingPush, setActivatingPush] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
+  const [testPushSuccess, setTestPushSuccess] = useState(false);
 
   const supabase = createClient();
   const router = useRouter();
@@ -515,46 +517,72 @@ export default function PerfilDoador() {
           </p>
 
           {notifPermission === 'granted' ? (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-50/70 border border-emerald-200 p-3 rounded-xl">
-              <span className="text-xs text-emerald-800 font-medium flex items-center gap-1.5">
-                <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-                Seu aparelho está pronto para receber alertas na barra!
-              </span>
-              <button
-                type="button"
-                onClick={async () => {
-                  await requestAndSubscribePush(supabase, userProfile?.id);
-                  const testId = `test-push-${Date.now()}`;
-                  const shownLocal = await showSystemTrayNotification(
-                    {
-                      id: testId,
-                      type: 'sistema',
-                      title: '🔔 Teste de Notificação O Bom Amigo',
-                      message: 'Tudo certo! As notificações estão aparecendo fora do app (na barra do seu aparelho/Chrome).',
-                      created_at: new Date().toISOString(),
-                      is_urgent: true,
-                    },
-                    { force: true }
-                  );
-                  await triggerRemotePushBroadcast({
-                    id: testId,
-                    title: '🔔 Teste de Notificação O Bom Amigo',
-                    message: 'Tudo certo! As notificações estão aparecendo fora do app (na barra do seu aparelho/Chrome).',
-                    link: '/doador/perfil',
-                    is_urgent: true,
-                    targetUserId: userProfile?.id,
-                  });
-                  if (shownLocal) {
-                    setFeedback({
-                      type: 'success',
-                      msg: 'Alerta enviado para a barra de notificações do seu aparelho/Chrome!',
-                    });
-                  }
-                }}
-                className="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-semibold transition-colors shrink-0 cursor-pointer"
-              >
-                Testar Alerta na Barra
-              </button>
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-50/70 border border-emerald-200 p-3 rounded-xl">
+                <span className="text-xs text-emerald-800 font-medium flex items-center gap-1.5">
+                  <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                  Seu aparelho está pronto para receber alertas na barra!
+                </span>
+                <button
+                  type="button"
+                  disabled={testingPush}
+                  onClick={async () => {
+                    if (testingPush) return;
+                    setTestingPush(true);
+                    setTestPushSuccess(false);
+                    try {
+                      await requestAndSubscribePush(supabase, userProfile?.id);
+                      const testId = `oba-test-${Date.now()}`;
+
+                      // Tenta enviar via Web Push remoto apenas para o próprio usuário (targetUserId: userProfile.id)
+                      const remoteRes = await triggerRemotePushBroadcast({
+                        id: testId,
+                        title: '🔔 Teste de Notificação O Bom Amigo',
+                        message: 'Tudo certo! As notificações estão aparecendo fora do app (visível apenas para você).',
+                        link: '/doador/perfil',
+                        is_urgent: true,
+                        targetUserId: userProfile?.id,
+                      });
+
+                      // Só dispara localmente caso o push remoto não tenha alcançado nenhum endpoint (evita duplicar 2 notificações!)
+                      if (!remoteRes.ok || !remoteRes.sent) {
+                        await showSystemTrayNotification(
+                          {
+                            id: testId,
+                            type: 'sistema',
+                            title: '🔔 Teste de Notificação O Bom Amigo',
+                            message: 'Tudo certo! As notificações estão aparecendo fora do app (visível apenas para você).',
+                            created_at: new Date().toISOString(),
+                            is_urgent: true,
+                          },
+                          { force: true }
+                        );
+                      }
+
+                      setTestPushSuccess(true);
+                      setTimeout(() => setTestPushSuccess(false), 5000);
+                    } finally {
+                      setTestingPush(false);
+                    }
+                  }}
+                  className={`px-3 py-1.5 border rounded-lg text-[11px] font-semibold transition-all shrink-0 cursor-pointer disabled:opacity-60 ${
+                    testPushSuccess
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                  }`}
+                >
+                  {testingPush
+                    ? 'Enviando teste...'
+                    : testPushSuccess
+                    ? '✓ Alerta enviado!'
+                    : 'Testar Alerta na Barra'}
+                </button>
+              </div>
+              {testPushSuccess && (
+                <p className="text-[11px] text-emerald-700 font-medium px-1">
+                  ✓ Alerta de teste enviado para a barra do seu aparelho (este teste aparece somente para você).
+                </p>
+              )}
             </div>
           ) : notifPermission === 'denied' ? (
             <div className="bg-red-50 border border-red-200 p-3 rounded-xl text-xs text-red-800 leading-relaxed">
